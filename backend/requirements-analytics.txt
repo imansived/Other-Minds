@@ -1,0 +1,6 @@
+# Phase 5 only — the divergence analytics over stored transcripts.
+# Kept out of requirements.txt so the serving image stays small.
+-r requirements.txt
+pandas>=2.2
+numpy>=2.0
+scikit-learn>=1.5

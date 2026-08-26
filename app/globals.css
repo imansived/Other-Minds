@@ -1,0 +1,1355 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   "Other Minds" — landing + chat.
+   A near-black room with a slowly drifting galaxy behind it. Three agents
+   read as distinct presences via a single inline `--agent` / `--agent-dim`
+   pair, set per message, per avatar, per card.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* A room at night, not a black screen: everything sits a few degrees toward
+     navy-violet, and the cards barely lift off the floor. */
+  --bg: #0a0a10;
+  --panel: #0d0d13;
+  --raised: #131319;
+
+  --bubble-user: #17171f;
+  --bubble-agent: #131319;
+
+  --text: #edebe6;
+  --muted: #5a5762;
+  --muted-2: #8a867e;
+  --hairline: rgba(237, 235, 230, 0.09);
+
+  /* Agent identity colors + their dim companions. */
+  --introspector: #8a7fe0;
+  --introspector-dim: #5a4fb0;
+  /* The gold was the brightest of the three by a clear margin — OKLCH L 0.754
+     against the violet's 0.649 and the green's 0.736 — and warm hues already
+     read brighter than their measured lightness against a ground this cool.
+     Between the two, its ring led the set strongly enough to look like the
+     agent the room had picked. Same hue, pulled to L 0.700 / C 0.118 so it
+     sits level with the other two rather than ahead of them. */
+  --behaviorist: #c99340;
+  --behaviorist-dim: #95672b;
+  --gardener: #5fbf9a;
+  --gardener-dim: #2f8a6a;
+
+  --serif: Georgia, "Times New Roman", Cambria, serif;
+  --ui: var(--font-geist-sans), system-ui, Arial, sans-serif;
+  /* What the three minds are read in. A humanist sans with a tall x-height and
+     open apertures — it holds a long paragraph without the screen-serif's
+     glare, and it is plainly not the same voice as the chrome. */
+  --speech: var(--font-manrope), "Manrope", var(--ui);
+
+  /* The scrollbars. Violet-grey rather than white: at these opacities a warm
+     white thumb reads as a smudge of daylight on a navy-violet ground, where
+     the same value pulled toward the room's own violet simply disappears into
+     it until you look. */
+  --scroll-thumb: rgba(174, 168, 196, 0.13);
+  --scroll-thumb-hover: rgba(186, 180, 208, 0.3);
+
+  --sidebar-w: 264px;
+}
+
+html {
+  height: 100%;
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The sky, seen from inside the room — dark, warm at one edge, barely moving
+   ═══════════════════════════════════════════════════════════════════════════ */
+.galaxy {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    /* The lamp: a soft pool of light where the conversation sits. */
+    radial-gradient(
+      ellipse 66% 52% at 50% 46%,
+      rgba(122, 108, 188, 0.055),
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 120% 78% at 50% -12%,
+      rgba(138, 127, 224, 0.045),
+      transparent 62%
+    ),
+    var(--bg);
+}
+
+/* Three glows wandering past one another. Slow, but plainly moving — where
+   they overlap keeps changing, so the sky is never the same twice. */
+.nebula {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.nebula-purple {
+  top: -46vmax;
+  left: 50%;
+  width: 108vmax;
+  height: 108vmax;
+  margin-left: -54vmax;
+  background: radial-gradient(
+    ellipse 62% 44% at 44% 52%,
+    rgba(136, 124, 218, 0.13),
+    rgba(86, 76, 168, 0.055) 42%,
+    transparent 70%
+  );
+  animation: nebula-purple 84s ease-in-out infinite;
+}
+.nebula-indigo {
+  top: 8vmax;
+  left: -30vmax;
+  width: 84vmax;
+  height: 76vmax;
+  background: radial-gradient(
+    ellipse 58% 50% at 50% 48%,
+    rgba(92, 100, 188, 0.085),
+    rgba(60, 66, 142, 0.034) 44%,
+    transparent 72%
+  );
+  animation: nebula-indigo 108s ease-in-out infinite;
+}
+/* The warm one — brown rather than gold, like light from another room. */
+.nebula-amber {
+  right: -34vmax;
+  bottom: -40vmax;
+  width: 86vmax;
+  height: 86vmax;
+  background: radial-gradient(
+    ellipse 58% 46% at 52% 46%,
+    rgba(182, 130, 78, 0.095),
+    rgba(136, 96, 56, 0.038) 44%,
+    transparent 70%
+  );
+  animation: nebula-amber 72s ease-in-out infinite;
+}
+
+@keyframes nebula-purple {
+  0% {
+    transform: rotate(0deg) translate3d(0, 0, 0) scale(1);
+  }
+  35% {
+    transform: rotate(40deg) translate3d(3vmax, 1.6vmax, 0) scale(1.08);
+  }
+  70% {
+    transform: rotate(74deg) translate3d(-2.2vmax, 2.4vmax, 0) scale(0.96);
+  }
+  100% {
+    transform: rotate(112deg) translate3d(0, 0, 0) scale(1);
+  }
+}
+@keyframes nebula-indigo {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(5vmax, -3.4vmax, 0) rotate(-130deg) scale(1.12);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-260deg) scale(1);
+  }
+}
+@keyframes nebula-amber {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(-5.5vmax, -3.6vmax, 0) rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(360deg) scale(1);
+  }
+}
+
+/* Three parallax star layers. Each is oversized and offset so its drift never
+   shows an edge; the near layer travels several times further than the far one
+   in the same span, which is the part you read as depth. */
+.star-layer {
+  position: absolute;
+  top: -12%;
+  left: -12%;
+  width: 124%;
+  height: 124%;
+  will-change: transform;
+}
+.star {
+  position: absolute;
+  border-radius: 50%;
+  background: #f2efe8;
+  /* Names, durations and delays are set per star inline; a star can carry
+     both the twinkle and the float at once. */
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* A slow wander of a few pixels, per star, so the field never looks pinned. */
+@keyframes star-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: var(--fx) var(--fy);
+  }
+}
+
+/* Loose orbits — different path, speed and direction per layer. */
+.drift-a {
+  animation: drift-a 104s ease-in-out infinite;
+}
+.drift-b {
+  animation: drift-b 70s ease-in-out infinite;
+}
+.drift-c {
+  animation: drift-c 46s ease-in-out infinite;
+}
+
+@keyframes drift-a {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(26px, -17px, 0);
+  }
+  50% {
+    transform: translate3d(8px, -38px, 0);
+  }
+  75% {
+    transform: translate3d(-21px, -15px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes drift-b {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(-42px, 19px, 0);
+  }
+  50% {
+    transform: translate3d(-15px, 50px, 0);
+  }
+  75% {
+    transform: translate3d(33px, 23px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes drift-c {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  33% {
+    transform: translate3d(58px, 34px, 0);
+  }
+  66% {
+    transform: translate3d(-35px, 58px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The corners fall away, so the room ends somewhere. Painted above the sky,
+   below the conversation. */
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 88% 80% at 50% 48%,
+    transparent 46%,
+    rgba(5, 5, 9, 0.16) 76%,
+    rgba(4, 4, 7, 0.4) 100%
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shell
+   ═══════════════════════════════════════════════════════════════════════════ */
+.app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.sidebar {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  width: var(--sidebar-w);
+  height: 100%;
+  overflow: hidden;
+  background: var(--panel);
+  border-right: 1px solid var(--hairline);
+  transition:
+    width 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.26s ease;
+}
+.sidebar.collapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+/* Fixed inner width: the content never squeezes while the shell animates. */
+.sidebar-inner {
+  width: var(--sidebar-w);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px 12px;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 12px;
+}
+.sidebar-title {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.new-chat {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+.new-chat:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--introspector) 55%, transparent);
+  background: color-mix(in srgb, var(--introspector) 14%, transparent);
+}
+
+.sidebar-empty {
+  margin: 8px 6px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.history-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  transition: background 0.16s ease;
+}
+.history-item:hover {
+  background: var(--raised);
+}
+.history-item.current {
+  background: color-mix(in srgb, var(--introspector) 7%, var(--raised));
+}
+.history-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--ui);
+}
+.history-title {
+  font-size: 0.8rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-item.current .history-title {
+  color: color-mix(in srgb, var(--introspector) 26%, var(--text));
+}
+.history-time {
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+.history-delete {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.16s ease,
+    color 0.16s ease;
+}
+.history-item:hover .history-delete,
+.history-delete:focus-visible {
+  opacity: 1;
+}
+.history-delete:hover {
+  color: #e07f7f;
+}
+
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  border: none;
+  background: rgba(6, 6, 9, 0.62);
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+/* Two controls and air. Nothing here names a speaker. */
+.topbar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px 4px;
+  min-height: 48px;
+}
+
+.icon-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    opacity 0.18s ease;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--hairline);
+}
+.icon-btn:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+/* ── Avatars — circular, always ───────────────────────────────────────────── */
+.avatar {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1.5px solid rgba(237, 235, 230, 0.12);
+  color: var(--muted);
+  transition:
+    border-color 0.4s ease,
+    color 0.4s ease,
+    background 0.4s ease;
+}
+.avatar svg {
+  width: 62%;
+  height: 62%;
+  display: block;
+  transform: translateY(6%);
+}
+.avatar.active {
+  border-color: color-mix(in srgb, var(--agent) 58%, transparent);
+  color: color-mix(in srgb, var(--agent) 70%, var(--muted-2));
+  background: color-mix(in srgb, var(--agent) 10%, var(--raised));
+}
+
+/* A real portrait, laid over the silhouette. `cover` fills the disc edge to
+   edge at any avatar size; the crop window is nudged by background-position.
+   Dark source images get a touch of lift so fine detail survives at 26px. */
+/* One treatment across three very different sources — a photograph, an
+   illustration and a second photograph — so they read as a set rather than as
+   three images that happen to be round. Pulled down in saturation and
+   brightness until none of them is louder than the room. */
+.avatar-photo {
+  position: absolute;
+  inset: 0;
+  /* The parent is a centred grid, which would otherwise shrink this empty box
+     to 0×0 rather than stretch it to the inset rectangle — an absolutely
+     positioned grid child is shrink-to-fit sized unless its alignment is
+     `stretch`. Hence the explicit size as well as the inset. */
+  place-self: stretch;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(0.66) brightness(0.86) contrast(1.03);
+}
+/* A trace of the agent's colour over the top, and a fine grain, which is what
+   actually welds the three together — the same texture on every disc. */
+.avatar-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23a)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  background-color: color-mix(in srgb, var(--agent) 14%, transparent);
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+/* Idle presences read as muted; the portrait follows the same rule. */
+.avatar:not(.active) .avatar-photo {
+  filter: saturate(0.3) brightness(0.72);
+  opacity: 0.7;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Landing
+   ═══════════════════════════════════════════════════════════════════════════ */
+.landing {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px 32px;
+}
+.landing-inner {
+  width: 100%;
+  max-width: 860px;
+  /* Flex items refuse to shrink past their content by default; without this
+     a long word or a wide cap pushes the whole column off-screen. */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 34px;
+}
+
+.landing-head {
+  max-width: 100%;
+  text-align: center;
+}
+/* The name of the place, and the largest thing on the screen. */
+.landing-head h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5.5vw, 3.1rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-family: var(--serif);
+  color: var(--text);
+}
+/* The idea. Set in the serif's italic so it reads as a line of thought rather
+   than a tagline, and split in tone: the setup steps back, the payoff comes
+   forward. The full stop between them becomes the beat. */
+.landing-idea {
+  /* Roomy enough to sit on one line where there's space; the inline-blocks
+     make it break at the full stop where there isn't. */
+  max-width: min(44ch, 100%);
+  margin: 22px auto 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(1.05rem, 2.3vw, 1.4rem);
+  line-height: 1.5;
+  letter-spacing: 0.004em;
+  color: color-mix(in srgb, var(--text) 92%, transparent);
+}
+.landing-idea span {
+  display: inline-block;
+}
+.landing-idea span:first-child {
+  color: color-mix(in srgb, var(--muted-2) 88%, transparent);
+}
+.landing-sub {
+  margin: 14px auto 0;
+  max-width: 42ch;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  text-wrap: balance;
+  color: var(--muted);
+}
+
+.minds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+.mind-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 18px 22px;
+  text-align: center;
+  border-radius: 20px;
+  background: var(--bubble-agent);
+  border: 1px solid color-mix(in srgb, var(--agent-dim) 32%, transparent);
+  transition:
+    border-color 0.5s ease,
+    transform 0.5s ease;
+}
+.mind-card:hover {
+  border-color: color-mix(in srgb, var(--agent-dim) 62%, transparent);
+  transform: translateY(-2px);
+}
+.mind-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.mind-card h2 {
+  margin: 0;
+  font-size: 0.67rem;
+  font-weight: 500;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--agent) 68%, var(--muted-2));
+}
+.mind-card p {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--muted-2);
+}
+
+.landing-composer {
+  width: 100%;
+  max-width: 620px;
+}
+.landing-hint {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Conversation
+   ═══════════════════════════════════════════════════════════════════════════ */
+.conversation {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 20px 2px;
+}
+/* Auto margins on both sides: a short exchange rests in the middle of the
+   room, and as thoughts accumulate they claim the space outward until the
+   thread simply scrolls. No dead gap under a two-line conversation. */
+.thread {
+  display: flex;
+  flex-direction: column;
+  /* Spacing is carried by the rows, not a uniform gap — the size of a gap is
+     how the thread says whether the same mind is still talking. */
+  gap: 0;
+  width: 100%;
+  max-width: 600px;
+  margin: auto;
+  padding: 6px 0 12px;
+}
+
+.row {
+  display: flex;
+  max-width: 74%;
+}
+/* A different mind picks the question up — a breath before it does. */
+.row + .row {
+  margin-top: 26px;
+}
+/* Someone in the room speaks, or is answered — a longer beat either side. */
+.row + .row.user,
+.row.user + .row {
+  margin-top: 30px;
+}
+/* Same mind, still going. Barely a break at all; declared last so it wins
+   over both rules above. */
+.row.carries-on {
+  margin-top: 6px;
+}
+
+.row.user {
+  align-self: flex-end;
+  justify-content: flex-end;
+  max-width: 66%;
+}
+.row.agent {
+  align-self: flex-start;
+}
+/* Holds the portrait's column even on the turns that don't repeat it, so a
+   run of messages stays aligned down one edge. */
+.gutter {
+  flex: none;
+  width: 38px;
+  margin-right: 10px;
+}
+/* The disc sits level with the top of the bubble it belongs to — the sharp
+   corner opposite it is what ties the two together. */
+.row-avatar {
+  margin-top: 1px;
+}
+.msg-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Discoverable, not announced: small, wide-tracked, and set in the speaker's
+   own colour. Inside the bubble rather than above it, so the name reads as the
+   first line of what was said. */
+.bubble-name {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--ui);
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--agent) 66%, var(--muted-2));
+}
+
+/* Rounded, but closer to a spoken line than to a card: no hard edge, a fill
+   barely lifted off the room, and the colour present only as a trace. */
+.bubble {
+  padding: 11px 16px;
+  border-radius: 16px;
+  line-height: 1.82;
+  font-size: 0.855rem;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+/* Present, but never the loudest thing on screen: the sans runs a shade
+   smaller than the serif beside it, at a lower contrast. */
+.bubble.user {
+  background: rgba(237, 235, 230, 0.045);
+  border: 1px solid transparent;
+  border-radius: 16px 16px 5px 16px;
+  font-family: var(--ui);
+  font-size: 0.845rem;
+  line-height: 1.62;
+  color: color-mix(in srgb, var(--text) 82%, transparent);
+}
+.bubble.agent {
+  background: color-mix(in srgb, var(--agent) 3%, var(--bubble-agent));
+  border: 1px solid color-mix(in srgb, var(--agent-dim) 10%, transparent);
+  font-family: var(--speech);
+  /* Manrope carries far more ink per line than the serif it replaced, so the
+     old 0.855/1.82 would have read as a wall. Down a hair in size, down harder
+     in leading, and a touch of negative tracking to keep the line compact. */
+  font-size: 0.845rem;
+  line-height: 1.68;
+  letter-spacing: -0.002em;
+  color: color-mix(in srgb, var(--text) 92%, transparent);
+}
+/* Only the first of a run is tied to a portrait, and the corner nearest that
+   portrait is where the tie is drawn: a single sharp corner at the top-left,
+   pointing back at the disc. Everything after it in the run has nothing beside
+   it to point at, so it stays round the whole way around. */
+.row.agent:not(.carries-on) .bubble.agent {
+  border-radius: 5px 16px 16px 16px;
+}
+/* Same rule on the other side of the room: a run of the reader's own lines
+   keeps its tail on the first only. */
+.row.user.carries-on .bubble.user {
+  border-radius: 16px;
+}
+
+/* ── Entrance motion ──────────────────────────────────────────────────────
+   One movement for everyone — a short rise and a fade, no overshoot and no
+   bounce. Character shows in the pace alone: the Introspector takes its time
+   arriving, the Behaviorist is simply there. */
+.enter-user {
+  animation: settle-in 0.34s ease-out both;
+}
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.enter-introspector {
+  animation: settle-in 0.95s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.enter-behaviorist {
+  animation: settle-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.enter-gardener {
+  animation: settle-in 0.72s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* ── Landing ──────────────────────────────────────────────────────────────
+   The rise above carries the message in; this is the fraction of a second
+   after it stops. Under two pixels of overshoot and one small recoil, on the
+   bubble rather than the row so it composes with whatever the row is doing.
+   You shouldn't be able to watch it happen — it should only be the reason the
+   message reads as having landed somewhere rather than faded in. */
+@keyframes land {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-1.5px);
+  }
+  72% {
+    transform: translateY(0.5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.enter-user .bubble,
+.enter-introspector .bubble,
+.enter-behaviorist .bubble,
+.enter-gardener .bubble {
+  animation: land 0.15s cubic-bezier(0.33, 0, 0.28, 1) both;
+}
+/* Each starts a breath before its own entrance finishes, so the two read as
+   one arrival and not as a movement followed by a twitch. */
+.enter-user .bubble {
+  animation-delay: 0.28s;
+}
+.enter-introspector .bubble {
+  animation-delay: 0.87s;
+}
+.enter-behaviorist .bubble {
+  animation-delay: 0.44s;
+}
+.enter-gardener .bubble {
+  animation-delay: 0.65s;
+}
+
+/* ── About to speak ───────────────────────────────────────────────────────
+   A name and three dots, nothing more. The portrait beside it is lit — its
+   colour comes up out of the idle grey and a soft ring gathers around it —
+   which is the whole of the announcement. */
+.composing {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  margin-top: 26px;
+  padding-left: 4px;
+  animation: settle-in 0.5s ease-out both;
+}
+.composing .avatar {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent) 8%, transparent);
+}
+.composing-name {
+  font-family: var(--ui);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--agent) 52%, var(--muted));
+}
+.dots {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 1px;
+}
+.dots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--agent);
+  opacity: 0.2;
+  /* Fading only — nothing here jumps. */
+  animation: dot-fade 2s ease-in-out infinite;
+}
+.dots span:nth-child(2) {
+  animation-delay: 0.33s;
+}
+.dots span:nth-child(3) {
+  animation-delay: 0.66s;
+}
+@keyframes dot-fade {
+  0%,
+  100% {
+    opacity: 0.16;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* ── Continue ─────────────────────────────────────────────────────────────── */
+/* An invitation, not a control. Bare text and an arrow — it should never
+   compete with the words above it. */
+.continue {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  margin: 24px 0 2px;
+  padding: 6px 2px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: var(--ui);
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 0.5s ease,
+    letter-spacing 0.5s ease;
+}
+.continue:hover {
+  color: color-mix(in srgb, var(--introspector) 42%, var(--text));
+  letter-spacing: 0.26em;
+}
+.continue svg {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.continue:hover svg {
+  transform: translateX(4px);
+}
+
+/* ── Error ────────────────────────────────────────────────────────────────── */
+.error {
+  align-self: flex-start;
+  max-width: 78%;
+  margin-top: 20px;
+  padding: 9px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(224, 90, 90, 0.38);
+  background: rgba(224, 90, 90, 0.1);
+  color: #f0a5a5;
+  font-size: 0.82rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Composer
+   ═══════════════════════════════════════════════════════════════════════════ */
+.composer-dock {
+  flex: none;
+  padding: 10px 20px 18px;
+}
+.composer-dock .composer {
+  max-width: 600px;
+  margin: 0 auto;
+}
+/* Barely there — it should read as an aside, not an instruction. */
+.composer-hint {
+  margin: 9px 0 0;
+  text-align: center;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  animation: settle-in 0.6s ease-out both;
+}
+
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 5px 5px 18px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    border-radius 0.18s ease;
+}
+/* Once the question runs past a line the pill unrolls into a panel: a 999px
+   radius on a tall box bows the sides inward and clips the first and last
+   lines. The controls drop to the foot of it, next to where you are typing
+   rather than floating halfway up the paragraph. */
+.composer.grown {
+  align-items: flex-end;
+  border-radius: 22px;
+  padding: 8px 6px 6px 18px;
+}
+/* A held breath of violet rather than a glow — one soft ring, no bloom. */
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--introspector) 38%, var(--hairline));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--introspector) 7%, transparent);
+}
+/* A textarea, sized in JS to its own content — see Composer.tsx. Everything
+   here exists to make it not look like one: no resize grip, no scrollbar until
+   it is genuinely too tall, and a line-height in the box that matches the one
+   the words will be read back in. */
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: hidden;
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  padding: 10px 0;
+  /* The starting height. JS takes over on the first paint. */
+  height: 41px;
+  max-height: 168px;
+  /* A stray blank line at the foot of a pasted paragraph shouldn't reserve
+     a whole extra row of the box on some platforms. */
+  display: block;
+}
+.composer textarea::placeholder {
+  color: var(--muted);
+}
+/* Inside the pill, and deliberately the quietest thing in it: no fill, no
+   border, and a colour that only comes up when you go looking for it. */
+.mute-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 1px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 88%, transparent);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
+}
+.mute-btn:hover,
+.mute-btn:focus-visible {
+  color: var(--muted-2);
+  background: rgba(237, 235, 230, 0.05);
+}
+/* Muted is a state worth seeing at a glance, not just an icon swap. */
+.mute-btn[aria-pressed="true"] {
+  color: color-mix(in srgb, var(--behaviorist) 44%, var(--muted));
+}
+.mute-btn[aria-pressed="true"]:hover {
+  color: color-mix(in srgb, var(--behaviorist) 66%, var(--muted-2));
+}
+
+.send {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--bg);
+  background: color-mix(in srgb, var(--introspector) 80%, white);
+  transition:
+    transform 0.12s ease,
+    opacity 0.2s ease;
+}
+.send:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+.send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.send:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Scrollbars — present, but not part of the furniture
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* The platform default is a wide slab with an arrow button at each end, and in
+   a room this dark it becomes the loudest thing on screen — brighter than the
+   words it sits beside. This is the same bar reduced to what it has to be: a
+   thin rounded thumb over no track at all, no buttons, tinted to the room
+   rather than white. It rests near the threshold of visible and comes up only
+   while the pointer is inside the pane it belongs to, which is the moment you
+   are actually looking for it. */
+.conversation,
+.history,
+.landing,
+.sidebar-inner,
+.composer textarea {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+.conversation::-webkit-scrollbar,
+.history::-webkit-scrollbar,
+.landing::-webkit-scrollbar,
+.sidebar-inner::-webkit-scrollbar,
+.composer textarea::-webkit-scrollbar {
+  /* 10 wide, with 3 of transparent border either side: a 4px mark, on a
+     10px-wide strip that is still easy to catch with a pointer. */
+  width: 10px;
+  height: 10px;
+}
+/* No groove, no shading, no end caps — the thumb is the whole control. */
+.conversation::-webkit-scrollbar-track,
+.history::-webkit-scrollbar-track,
+.landing::-webkit-scrollbar-track,
+.sidebar-inner::-webkit-scrollbar-track,
+.composer textarea::-webkit-scrollbar-track,
+.conversation::-webkit-scrollbar-corner,
+.history::-webkit-scrollbar-corner,
+.landing::-webkit-scrollbar-corner,
+.sidebar-inner::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.conversation::-webkit-scrollbar-button,
+.history::-webkit-scrollbar-button,
+.landing::-webkit-scrollbar-button,
+.sidebar-inner::-webkit-scrollbar-button,
+.composer textarea::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.conversation::-webkit-scrollbar-thumb,
+.history::-webkit-scrollbar-thumb,
+.landing::-webkit-scrollbar-thumb,
+.sidebar-inner::-webkit-scrollbar-thumb,
+.composer textarea::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+  /* Inset from both edges, so the thumb reads as a floating mark rather than
+     as a bar welded to the side of the pane. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.25s ease;
+}
+.conversation:hover::-webkit-scrollbar-thumb,
+.history:hover::-webkit-scrollbar-thumb,
+.landing:hover::-webkit-scrollbar-thumb,
+.sidebar-inner:hover::-webkit-scrollbar-thumb,
+.composer textarea:hover::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb-hover);
+}
+/* Firefox has no hover hook for the thumb, so the pane itself carries it. */
+.conversation:hover,
+.history:hover,
+.landing:hover,
+.sidebar-inner:hover,
+.composer textarea:hover {
+  scrollbar-color: var(--scroll-thumb-hover) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--sidebar-w);
+    transform: translateX(-100%);
+    transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    border-right-color: var(--hairline);
+  }
+  .sidebar.collapsed {
+    width: var(--sidebar-w);
+  }
+  .sidebar.mobile-open {
+    transform: none;
+  }
+  .scrim {
+    display: block;
+  }
+  .minds {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .mind-card {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+  .mind-card > .avatar {
+    width: 54px !important;
+    height: 54px !important;
+  }
+  .mind-copy {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar {
+    padding: 8px 12px 2px;
+    min-height: 44px;
+  }
+  .landing {
+    padding: 4px 16px 24px;
+  }
+  .landing-inner {
+    gap: 26px;
+  }
+  .landing-idea {
+    margin-top: 15px;
+  }
+  .landing-sub {
+    margin-top: 11px;
+    font-size: 0.8rem;
+  }
+  .conversation {
+    padding: 10px 14px 4px;
+  }
+  .row {
+    max-width: 88%;
+  }
+  .row.user {
+    max-width: 82%;
+  }
+  .row + .row {
+    margin-top: 18px;
+  }
+  .row + .row.user,
+  .row.user + .row {
+    margin-top: 24px;
+  }
+  .row.carries-on {
+    margin-top: 6px;
+  }
+  .gutter {
+    margin-right: 9px;
+  }
+  .bubble {
+    font-size: 0.86rem;
+    padding: 9px 13px;
+  }
+  .composer-dock {
+    padding: 8px 12px 14px;
+  }
+  .composer {
+    padding: 5px 5px 5px 15px;
+  }
+  .composer textarea {
+    font-size: 0.87rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reduced motion — kill every drift, keep the scene
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .nebula,
+  .star-layer,
+  .star,
+  .dots span,
+  .composing,
+  .enter-user,
+  .enter-introspector,
+  .enter-behaviorist,
+  .enter-gardener,
+  .continue,
+  .continue svg,
+  .send,
+  .mute-btn,
+  .composer,
+  .sidebar,
+  .mind-card,
+  .enter-user .bubble,
+  .enter-introspector .bubble,
+  .enter-behaviorist .bubble,
+  .enter-gardener .bubble {
+    animation: none !important;
+    transition: none !important;
+  }
+  .enter-user,
+  .enter-introspector,
+  .enter-behaviorist,
+  .enter-gardener,
+  .composing,
+  .enter-user .bubble,
+  .enter-introspector .bubble,
+  .enter-behaviorist .bubble,
+  .enter-gardener .bubble {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}

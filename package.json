@@ -1,0 +1,32 @@
+{
+  "name": "other-minds",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:api": "node scripts/py.mjs -m uvicorn app.main:app --app-dir backend --port 8000 --reload --reload-dir backend/app",
+    "dev:ui": "node scripts/py.mjs -m streamlit run ui/main.py",
+    "dev:all": "node scripts/dev.mjs",
+    "dev:clean": "node scripts/dev.mjs --clean",
+    "build": "next build",
+    "start": "next start",
+    "report": "node scripts/py.mjs backend/scripts/report.py",
+    "seed": "node scripts/py.mjs backend/scripts/seed_corpus.py",
+    "test": "npm run test:api && npm run test:ui",
+    "test:api": "node scripts/py.mjs -m pytest backend/tests -q",
+    "test:ui": "node scripts/py.mjs -m pytest ui/tests -q"
+  },
+  "dependencies": {
+    "next": "16.2.10",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

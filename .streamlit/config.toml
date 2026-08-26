@@ -1,0 +1,16 @@
+# Streamlit configuration for the Other Minds UI (ui/streamlit_app.py).
+
+[server]
+port = 8501
+
+# Loopback only. The default binds every interface and prints an "External URL"
+# on the machine's public address — which would let anyone on the network drive
+# the app and spend the API quota. The FastAPI service binds loopback too.
+address = "127.0.0.1"
+
+# Skips Streamlit's first-run email prompt, which otherwise blocks startup
+# whenever stdin isn't a person.
+headless = true
+
+[browser]
+gatherUsageStats = false
