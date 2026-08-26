@@ -1,0 +1,5 @@
+# The Streamlit client. It talks to the FastAPI service over HTTP like any
+# other client — it does NOT import from backend/app, and in particular it does
+# not reimplement the turn rule.
+streamlit>=1.40
+httpx>=0.27

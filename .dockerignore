@@ -1,0 +1,40 @@
+# The build context is the repo root for all three images, so this matters:
+# without it every build would ship node_modules, the virtualenv, and the
+# database.
+
+# dependencies / build output — reinstalled or rebuilt inside the image
+node_modules
+.next
+out
+build
+backend/.venv
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+
+# local data. The database belongs on the compose volume, not baked into an
+# image — shipping it would leak conversations into the image layers.
+backend/data
+
+# secrets. The key reaches the API through env_file at run time; it must never
+# become an image layer.
+.env
+.env.*
+!.env.local.example
+
+# vcs / tooling / editor
+.git
+.gitignore
+.github
+.claude
+.vscode
+.idea
+*.tsbuildinfo
+npm-debug.log*
+
+# docs and scratch
+README.md
+AGENTS.md
+CLAUDE.md
+docs

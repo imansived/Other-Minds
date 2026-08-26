@@ -1,0 +1,67 @@
+# Other Minds — three services, one API key.
+#
+#   docker compose up --build
+#
+#   web  http://localhost:3000   the Next.js app
+#   ui   http://localhost:8501   the Streamlit client
+#   api  http://localhost:8000   FastAPI (docs at /docs)
+#
+# The key is read from .env.local, the same file the local dev setup uses, so
+# there is one copy on disk rather than two that drift.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    # Never baked into the image — supplied at run time.
+    env_file:
+      - .env.local
+    environment:
+      # Absolute, and on the volume below, so conversations and the analytics
+      # corpus survive a rebuild.
+      DB_PATH: /data/other_minds.db
+      # The browser never calls this service directly (web proxies server-side,
+      # and Streamlit calls it from Python), so the allowed origins only matter
+      # if you point a browser at it yourself.
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:8501"]'
+    volumes:
+      - other-minds-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    environment:
+      # Service name, not localhost: inside the compose network `api` resolves
+      # to the API container. localhost here would be the web container itself.
+      OTHER_MINDS_API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        # Wait for /health, not merely for the process to exist, so the first
+        # page load does not race the API's startup.
+        condition: service_healthy
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    environment:
+      OTHER_MINDS_API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # Named, so `docker compose down` keeps your conversations. `down -v` is what
+  # deletes them.
+  other-minds-data:
