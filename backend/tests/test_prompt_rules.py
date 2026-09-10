@@ -80,6 +80,14 @@ def test_closing_aphorism_is_banned(agent_id):
     prompt = agents()[agent_id].system_prompt
     assert "Never end on a line that sums up your turn." in prompt
     assert "no sentence that could be lifted out and quoted on its own" in prompt
+    # The abstract ban was not enough by itself. Four consecutive turns ended on
+    # a verdict with this exact rule already in the prompt, so it now NAMES the
+    # shape — the same thing that made the vocabulary bans work (see
+    # test_persona_vocabulary_bans_survive: a ban has to name the word).
+    # Whether it lands is measured, not assumed: analytics.ends_on_a_verdict,
+    # reported per agent by `npm run report`.
+    assert "that is your answer" in prompt
+    assert "points back at your own turn and tells them what it proved" in prompt
 
 
 @pytest.mark.parametrize("agent_id", AGENT_IDS)

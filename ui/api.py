@@ -47,11 +47,17 @@ def health() -> dict:
     return _request("GET", "/health")
 
 
-def next_speaker(transcript: list[dict]) -> str:
-    """Who speaks next. No model call — returns immediately."""
-    return _request("POST", "/agent/next-speaker", json={"transcript": transcript})[
-        "agentId"
-    ]
+def next_speaker(transcript: list[dict], allow_same_speaker: bool = True) -> str:
+    """Who speaks next. No model call — returns immediately.
+
+    Pass allow_same_speaker=False when the reader asked for a DIFFERENT mind;
+    otherwise the draw may hand the floor straight back to whoever just spoke.
+    """
+    return _request(
+        "POST",
+        "/agent/next-speaker",
+        json={"transcript": transcript, "allowSameSpeaker": allow_same_speaker},
+    )["agentId"]
 
 
 def take_turn(transcript: list[dict], agent_id: str, conversation_id: str | None) -> str:

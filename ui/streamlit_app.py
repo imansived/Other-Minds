@@ -57,6 +57,10 @@ ss.setdefault("conversation_id", None)
 # further down, after the transcript has been drawn, so the reader sees the
 # conversation-so-far while the next line is being written.
 ss.setdefault("pending", False)
+# Which of the two ways the pending turn was asked for. "hear another mind" is
+# a request for someone else and must not return the agent who just spoke; a
+# typed reply lets the room carry on, double turn and all.
+ss.setdefault("allow_same_speaker", True)
 ss.setdefault("error", None)
 
 
@@ -172,7 +176,7 @@ if ss.error:
 # the foot of the conversation, where the next line will actually land.
 if ss.pending:
     try:
-        agent_id = api.next_speaker(ss.transcript)
+        agent_id = api.next_speaker(ss.transcript, ss.allow_same_speaker)
         name, colour = AGENTS[agent_id]
         with st.chat_message(name, avatar=portrait(agent_id)):
             st.markdown(
@@ -195,10 +199,12 @@ if ss.pending:
 if ss.transcript and not ss.pending:
     if st.button("hear another mind  →"):
         ss.pending = True
+        ss.allow_same_speaker = False
         st.rerun()
 
 if prompt := st.chat_input("say what you're thinking…"):
     ss.transcript.append({"role": "user", "content": prompt})
     persist()
     ss.pending = True
+    ss.allow_same_speaker = True
     st.rerun()

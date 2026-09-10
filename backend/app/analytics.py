@@ -394,6 +394,46 @@ def print_report() -> None:
         print(f"\nlatency: median {lat['overall_median_ms']}ms "
               f"over {lat['total_generations']} generations")
 
+    print_chat_feel()
+
+
+def print_chat_feel(model: str | None = None) -> None:
+    """The other half of the report, and the half that was missing.
+
+    Every divergence metric can read green while each turn is a 150-word essay
+    — that is not hypothetical, it is what happened. The chat-feel numbers were
+    written to catch exactly that and were never wired to anything a person
+    runs, so the only thing watching for essays was somebody reading a
+    transcript and noticing.
+
+    Defaults to the SHIPPED model rather than the whole corpus. Turns generated
+    by a model nobody serves are not evidence about the app, and averaging them
+    in is how a corpus seeded on one model came to stand in for another.
+    """
+    model = model or settings.model
+    f = chat_feel_report(model)
+    print(f"\nchat feel  [{model}]")
+    if not f.get("available"):
+        print(f"  {f.get('reason', 'unavailable')}")
+        return
+    print(f"  turns {f['turns']}  mean {f['mean_words']}w  median {f['median_words']}w"
+          f"  range {f['min_words']}-{f['max_words']}w")
+    cv = f["coefficient_of_variation"]
+    print(f"  spread cv {cv} "
+          f"- {'one length in different words' if cv and cv < 0.4 else 'varies'}")
+    print(f"  essays (>{f['thresholds']['long_over']}w) {f['long_share']:.0%}"
+          f"   reactions (<{f['thresholds']['short_under']}w) {f['short_share']:.0%}")
+    print(f"  ends on a quotable verdict  {f['verdict_closer_share']:.0%}")
+    opener = f["opens_on_another_share"]
+    print(f"  opens by restating a mind   "
+          f"{'n/a' if opener is None else format(opener, '.0%')}")
+    print(f"  picks up the previous mind  {f['echoes_previous_agent_share']}")
+    for agent, v in sorted(f.get("per_agent", {}).items()):
+        op = v["opens_on_another_share"]
+        print(f"    {agent:13s} n={v['turns']:<3} mean {v['mean_words']:>5}w"
+              f"  verdicts {v['verdict_closer_share']:.0%}"
+              f"  openers {'n/a' if op is None else format(op, '.0%')}")
+
 
 if __name__ == "__main__":
     print_report()
@@ -433,6 +473,59 @@ def generated_turns(model: str | None = None) -> pd.DataFrame:
 
 
 
+def first_sentence(text: str) -> str:
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", str(text).strip()) if p.strip()]
+    return parts[0] if parts else ""
+
+
+def opens_on_another_agent(text: str, agent_id: str) -> bool:
+    """Does this turn OPEN by naming another mind?
+
+    "The Introspector, you are assuming that..." / "The Behaviorist wants you
+    to... but". The prompts ban this explicitly — "do not open by restating
+    their position back to them... That is the point-counterpoint rhythm" — and
+    the ban has never held: measured at 41% of eligible turns, the same rate a
+    reader flagged unprompted in their own transcript.
+
+    Only the FIRST sentence counts. Naming another agent later in a turn is the
+    aimed disagreement the prompts actually want; leading with it is the tic.
+    """
+    opener = first_sentence(text)
+    if not opener:
+        return False
+    if re.search(r"\bboth of you\b|\byou two\b", opener, re.I):
+        return True
+    others = [a for a in AGENT_IDS if a != agent_id]
+    return any(re.search(rf"\bThe {a}\b", opener, re.I) for a in others)
+
+
+def _opener_share(turns: pd.DataFrame, only_agent: str | None = None) -> float | None:
+    """Share of ELIGIBLE turns that open on another mind.
+
+    Eligibility matters more than it looks. A turn cannot open on someone who
+    has not spoken yet, so scoring every turn dilutes the rate with turns where
+    the tic was impossible — which understates it worst in exactly the short
+    conversations where one opener does the most damage.
+
+    `only_agent` narrows the COUNT without narrowing the context. Whether a turn
+    was eligible depends on who else spoke in that conversation, so a per-agent
+    figure has to be read off the whole corpus — handing this function one
+    agent's turns in isolation makes every turn ineligible and reports n/a.
+    """
+    if turns.empty:
+        return None
+    eligible = hits = 0
+    for _, convo in turns.groupby("conversation_id"):
+        spoken: set[str] = set()
+        for _, row in convo.sort_values("created_at").iterrows():
+            if spoken - {row["agent"]} and only_agent in (None, row["agent"]):
+                eligible += 1
+                if opens_on_another_agent(row["text"], row["agent"]):
+                    hits += 1
+            spoken.add(row["agent"])
+    return round(hits / eligible, 3) if eligible else None
+
+
 # A word appearing in more than this share of turns is too common for its
 # reappearance to mean anything.
 ECHO_MAX_DOCUMENT_FREQUENCY = 0.2
@@ -440,6 +533,43 @@ ECHO_MAX_DOCUMENT_FREQUENCY = 0.2
 # anything. In a two-turn corpus every word occurs in 100% of turns, so a bare
 # frequency test would dismiss the whole vocabulary as common.
 ECHO_MIN_TURNS_FOR_COMMON = 5
+
+
+# Closing verdicts. The prompts have banned these from the beginning, in the
+# abstract: "no sentence that could be lifted out and quoted on its own". An
+# abstract ban was not enough — a build serving stale prompts produced four
+# turns in one conversation that each ended on one, and nothing in the app
+# noticed. So the shape is now measured rather than merely forbidden.
+#
+# Written from observed closers, and deliberately NARROW. A loose pattern scores
+# every declarative last sentence as a verdict, which would put the rate near
+# 50% and make the number useless for spotting a regression:
+#
+#   "That is the only test that matters."
+#   "The only thing that remains is what you repeatedly did."
+#   "...that is your answer."
+#
+# A question is never a verdict, however sweeping — it hands the turn back
+# rather than closing it, which is the behaviour the rule is protecting.
+VERDICT_CLOSERS = (
+    r"^(?:That|This|It)(?:'s| is| will| was)\b",
+    r"\bthe only\b[^.]*\b(?:that matters|thing|test|way)\b",
+    r"\bit(?:'s| is) not\b[^.]*\bit(?:'s| is)\b",
+    r"\bthat is your answer\b",
+)
+
+
+def last_sentence(text: str) -> str:
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", str(text).strip()) if p.strip()]
+    return parts[-1] if parts else ""
+
+
+def ends_on_a_verdict(text: str) -> bool:
+    """Does this turn stop on a line that could be lifted out and quoted?"""
+    closer = last_sentence(text)
+    if not closer or closer.endswith("?"):
+        return False
+    return any(re.search(p, closer, re.I) for p in VERDICT_CLOSERS)
 
 
 def _words(text: str) -> set[str]:
@@ -555,6 +685,15 @@ def chat_feel(turns: pd.DataFrame) -> dict:
         "short_share": round(float((words < SHORT_TURN_WORDS).mean()), 3),
         "long_turns": int((words > LONG_TURN_WORDS).sum()),
         "long_share": round(float((words > LONG_TURN_WORDS).mean()), 3),
+        # The tell the reader noticed first, and the one no test could catch
+        # until it was measured: every turn ending on a quotable summary.
+        "verdict_closer_share": round(
+            float(turns["text"].apply(ends_on_a_verdict).mean()), 3
+        ),
+        # The point-counterpoint tic: opening by restating another mind's
+        # position. Banned in the prompts, never actually held. Reported over
+        # turns where another mind had already spoken — see _opener_share.
+        "opens_on_another_share": _opener_share(turns),
         "addresses_another_agent_share": round(float(names_other.mean()), 3),
         "echoes_previous_agent_share": echoed,
         "same_agent_followups": len(deltas),
@@ -574,4 +713,10 @@ def chat_feel_report(model: str | None = None) -> dict:
         for agent, group in turns.groupby("agent")
         if len(group) >= 3
     }
+    # Recomputed against the FULL corpus rather than each agent's slice. Every
+    # other figure here is a property of one agent's turns; this one is a
+    # property of where those turns sat in a conversation, and the slice throws
+    # that away.
+    for agent, stats in overall["per_agent"].items():
+        stats["opens_on_another_share"] = _opener_share(turns, only_agent=agent)
     return overall

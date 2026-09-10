@@ -19,8 +19,11 @@ def fake_api(monkeypatch):
     """A stub service. `calls` records what the UI asked for."""
     state = {"conversations": [], "calls": [], "speaker": "gardener"}
 
-    def next_speaker(transcript):
-        state["calls"].append(("next_speaker", len(transcript)))
+    def next_speaker(transcript, allow_same_speaker=True):
+        # The flag is recorded, not ignored: whether the UI asks for "someone
+        # else" or "whoever the room hands it to" is the whole difference
+        # between the button and a typed reply.
+        state["calls"].append(("next_speaker", len(transcript), allow_same_speaker))
         return state["speaker"]
 
     def take_turn(transcript, agent_id, conversation_id):
@@ -60,8 +63,24 @@ def test_asking_a_question_produces_one_agent_reply(fake_api):
     roles = [m["role"] for m in at.session_state["transcript"]]
     assert roles == ["user", "gardener"], roles
     assert at.session_state["transcript"][1]["content"] == "reply from gardener"
-    # It asked who speaks rather than deciding for itself.
-    assert ("next_speaker", 1) in fake_api["calls"]
+    # It asked who speaks rather than deciding for itself — and a typed reply
+    # leaves the double turn on the table.
+    assert ("next_speaker", 1, True) in fake_api["calls"]
+
+
+def test_hear_another_mind_asks_for_a_different_one(fake_api):
+    """The button says "another mind". It has to ask for one.
+
+    Without the flag the draw could hand the floor straight back to whoever
+    just spoke, roughly one press in four — which is what a reader saw when
+    The Introspector answered twice with the button in between.
+    """
+    at = run()
+    at.chat_input[0].set_value("should I stay?").run()
+    at.button[0].click().run()
+
+    asks = [c for c in fake_api["calls"] if c[0] == "next_speaker"]
+    assert asks[-1][2] is False, asks
 
 
 def test_only_one_agent_speaks_per_turn(fake_api):

@@ -194,3 +194,44 @@ def test_an_unexpected_exception_still_returns_json(client, monkeypatch):
     assert r.status_code == 500
     assert r.headers["content-type"].startswith("application/json")
     assert r.json()["error"] == "Something went wrong generating that turn."
+
+
+def test_rate_limit_distinguishes_per_day_from_per_minute():
+    """The seeder retries one and gives up on the other, so the flag must be right.
+
+    This regressed once already: llm.generate_turn started raising its own
+    RateLimited, the seeder was still sniffing the raw provider string, and
+    rate-limited turns were silently SKIPPED instead of retried — biasing the
+    corpus in exactly the way retrying exists to prevent.
+    """
+    import langchain_core.exceptions as exceptions
+
+    from app import llm
+
+    for raw, expected in [
+        ("429 RESOURCE_EXHAUSTED 'quotaId': "
+         "'GenerateRequestsPerDayPerProjectPerModel-FreeTier'", True),
+        ("429 RESOURCE_EXHAUSTED 'quotaId': "
+         "'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'", False),
+    ]:
+        class Failing:
+            async def ainvoke(self, _m):
+                raise exceptions.ModelRateLimitError(raw)
+
+        import asyncio
+
+        from app.agents.registry import get_agent
+        from app.schemas import ChatMessage
+
+        orig = llm.get_model
+        llm.get_model = lambda: Failing()
+        try:
+            try:
+                asyncio.run(llm.generate_turn(
+                    get_agent("gardener"),
+                    [ChatMessage(role="user", content="hi")]))
+                raise AssertionError("expected RateLimited")
+            except llm.RateLimited as err:
+                assert err.per_day is expected, f"{raw[:40]} -> per_day={err.per_day}"
+        finally:
+            llm.get_model = orig

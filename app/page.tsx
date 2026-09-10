@@ -146,11 +146,7 @@ export default function Home() {
   // without waiting on the round trip.
   useEffect(() => {
     if (!hydrated || transcript.length === 0) return;
-    if (!currentIdRef.current) {
-      currentIdRef.current = makeId();
-      setCurrentId(currentIdRef.current);
-    }
-    const id = currentIdRef.current;
+    const id = ensureConversationId();
     const title = titleFor(transcript);
     setHistory((prev) => [
       { id, title, updatedAt: Date.now(), messageCount: transcript.length },
@@ -180,15 +176,35 @@ export default function Home() {
 
   // Ask the backend who speaks next. No model call — it returns immediately,
   // which is what lets the composing row name the agent before the reply lands.
-  async function askNextSpeaker(history: ChatMessage[]): Promise<AgentId> {
+  async function askNextSpeaker(
+    history: ChatMessage[],
+    allowSameSpeaker: boolean,
+  ): Promise<AgentId> {
     const res = await fetch("/api/agent/next-speaker", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript: history }),
+      body: JSON.stringify({ transcript: history, allowSameSpeaker }),
     });
     const data = await readReply(res);
     if (!res.ok) throw new Error((data.error as string) ?? "Request failed");
     return data.agentId as AgentId;
+  }
+
+  // The conversation a turn belongs to.
+  //
+  // Assigned here rather than left to the mirroring effect below, because a
+  // turn is generated BEFORE that effect runs — so on the opening message the
+  // id would still be null. Every turn taken that way was stored unattributed,
+  // and an unattributed turn can never be joined back to what was said around
+  // it. That is what made the stored corpus unusable: 16 of the turns actually
+  // served to a reader carry no conversation at all, and no backfill can
+  // recover them.
+  function ensureConversationId(): string {
+    if (!currentIdRef.current) {
+      currentIdRef.current = makeId();
+      setCurrentId(currentIdRef.current);
+    }
+    return currentIdRef.current;
   }
 
   // Ask one agent for its next line, given the transcript-so-far.
@@ -199,7 +215,11 @@ export default function Home() {
     const res = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId, transcript: history }),
+      body: JSON.stringify({
+        agentId,
+        transcript: history,
+        conversationId: ensureConversationId(),
+      }),
     });
     const data = await readReply(res);
     if (!res.ok) throw new Error((data.error as string) ?? "Request failed");
@@ -242,7 +262,10 @@ export default function Home() {
   // One full turn, end to end: ask the backend who speaks next, then ask them
   // to speak. Split in two so the composing row can name the agent and light
   // its portrait while the reply is still being written.
-  async function runTurn(history: ChatMessage[]) {
+  // `allowSameSpeaker` is false when the person pressed "hear another mind".
+  // The draw is made once, here, and the chosen agent is then pinned for the
+  // generate call — so the two requests cannot disagree about who is speaking.
+  async function runTurn(history: ChatMessage[], allowSameSpeaker = true) {
     // `busy` comes from the render closure, so it can still be stale for a
     // click that lands before React re-renders. The ref is checked and set in
     // the same synchronous step, which a second call cannot slip past.
@@ -253,7 +276,7 @@ export default function Home() {
 
     let agentId: AgentId;
     try {
-      agentId = await askNextSpeaker(history);
+      agentId = await askNextSpeaker(history, allowSameSpeaker);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setResolvingSpeaker(false);
@@ -273,9 +296,13 @@ export default function Home() {
 
   // Advance the conversation by exactly ONE agent message, then wait for the
   // user again (the Continue button, or an empty-box send, both call this).
+  // The button says "hear another mind", so it must produce another mind. The
+  // ~1-in-4 double turn belongs to the case where the person REPLIES and the
+  // room carries on by itself, not to the case where they asked for someone
+  // else in as many words.
   function advance() {
     if (busy || transcript.length === 0) return;
-    void runTurn(transcript);
+    void runTurn(transcript, false);
   }
 
   // Input-bar send: with text, drop the user's message in and let ONE agent

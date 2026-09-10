@@ -395,3 +395,164 @@ def test_echo_still_fires_on_a_genuinely_rare_word_in_that_corpus():
     gen("gardener", "that cubicle has someone in it too", conversation="z", at=base + 501)
     r = analytics.chat_feel(analytics.generated_turns())
     assert r["echoes_previous_agent_share"] > 0.0
+
+
+# ── Closing verdicts ────────────────────────────────────────────────────────
+#
+# The tell the reader spotted first. The prompts have always banned it in the
+# abstract ("no sentence that could be lifted out and quoted on its own"), and
+# a build serving stale prompts still ended four consecutive turns on one while
+# every divergence metric read green. A rule nothing measures is a rule nothing
+# enforces.
+
+
+@pytest.mark.parametrize(
+    "closer",
+    [
+        "That is the only test that matters.",
+        "The only thing that remains is what you repeatedly did.",
+        "If you already tend to walk away when it gets hard, that is your answer.",
+        "It's not a question of money, it's a question of what you want.",
+    ],
+)
+def test_verdict_closers_are_detected(closer):
+    assert analytics.ends_on_a_verdict("Some earlier sentence. " + closer)
+
+
+@pytest.mark.parametrize(
+    "closer",
+    [
+        # A question hands the turn back rather than closing it, which is the
+        # behaviour the rule protects — never score it as a verdict, however
+        # sweeping it sounds.
+        "Who are the people in your life who would actually feel your absence?",
+        "So is that the only thing that matters to you?",
+        "You have been together long enough to talk about children.",
+        "Have you spent a week looking after a toddler?",
+    ],
+)
+def test_ordinary_closers_are_not_verdicts(closer):
+    assert not analytics.ends_on_a_verdict("Some earlier sentence. " + closer)
+
+
+def test_only_the_LAST_sentence_counts():
+    """A verdict-shaped line mid-turn is just a sentence.
+
+    The rule is about how a turn STOPS. Scoring the whole body would flag
+    ordinary speech and make the number useless for spotting a regression.
+    """
+    assert not analytics.ends_on_a_verdict(
+        "That is the only test that matters. But what did you actually do?"
+    )
+
+
+def test_empty_and_unpunctuated_turns_do_not_crash():
+    assert not analytics.ends_on_a_verdict("")
+    assert not analytics.ends_on_a_verdict("   ")
+    assert analytics.ends_on_a_verdict("That is the only thing that matters")
+
+
+def test_verdict_share_is_reported_per_agent(monkeypatch):
+    """The share has to be visible per agent, or a single offender is averaged
+    away behind two well-behaved ones."""
+    for i in range(4):
+        store.record_generation(
+            conversation_id="c1", agent_id="behaviorist", model="m",
+            latency_ms=1, transcript_len=i,
+            text="You did the work. That is the only test that matters.",
+        )
+        store.record_generation(
+            conversation_id="c1", agent_id="gardener", model="m",
+            latency_ms=1, transcript_len=i,
+            text="Who else is in this with you, and have you asked them?",
+        )
+    r = analytics.chat_feel_report("m")
+    assert r["per_agent"]["behaviorist"]["verdict_closer_share"] == 1.0
+    assert r["per_agent"]["gardener"]["verdict_closer_share"] == 0.0
+    assert r["verdict_closer_share"] == 0.5
+
+
+# ── Point-counterpoint openers ──────────────────────────────────────────────
+#
+# "The Introspector, you are assuming that..." The prompts ban this outright and
+# the ban has never held: 41% of eligible turns on the shipped model, the same
+# rate a reader flagged unprompted in their own transcript. It went unnoticed
+# for as long as it did because nothing counted it.
+
+
+@pytest.mark.parametrize(
+    "opener,speaker",
+    [
+        ("The Introspector, you are assuming fatigue distorts what you want.", "behaviorist"),
+        ("The Behaviorist is counting your trips, but the numbers say nothing.", "gardener"),
+        ("The Gardener wants you to talk to them first, but that skips a step.", "introspector"),
+        ("Both of you are talking as if these friends will stay where they are.", "gardener"),
+    ],
+)
+def test_openers_that_restate_another_mind_are_detected(opener, speaker):
+    assert analytics.opens_on_another_agent(opener + " And so on.", speaker)
+
+
+@pytest.mark.parametrize(
+    "turn",
+    [
+        # Naming another agent LATER is the aimed disagreement the prompts
+        # actually want. Only leading with it is the tic.
+        "What did you actually do last week? The Gardener would ask who else is in it.",
+        "You said you are not sure. That word is doing a lot of work.",
+        "Who else depends on this decision?",
+    ],
+)
+def test_naming_a_mind_later_is_not_an_opener(turn):
+    assert not analytics.opens_on_another_agent(turn, "behaviorist")
+
+
+def test_an_agent_naming_ITSELF_is_not_an_opener():
+    """Self-reference is a different fault, and conflating them would let the
+    real rate drift while this number looked stable."""
+    assert not analytics.opens_on_another_agent(
+        "The Behaviorist would say to look at what you did.", "behaviorist"
+    )
+
+
+def test_opener_share_counts_only_turns_where_someone_else_had_spoken():
+    """A turn cannot open on a mind that has not spoken yet.
+
+    Scoring every turn dilutes the rate with turns where the tic was impossible
+    — worst in short conversations, where one opener does the most damage.
+    """
+    # First turn: nobody to name. Second: eligible, and does it.
+    store.record_generation(
+        conversation_id="c1", agent_id="gardener", model="m", latency_ms=1,
+        transcript_len=0, text="Who else is in this with you?",
+    )
+    store.record_generation(
+        conversation_id="c1", agent_id="behaviorist", model="m", latency_ms=1,
+        transcript_len=1, text="The Gardener is asking who else is in it, but look at what you did.",
+    )
+    r = analytics.chat_feel_report("m")
+    # One eligible turn, and it opened on another mind.
+    assert r["opens_on_another_share"] == 1.0
+
+
+def test_per_agent_opener_share_is_read_off_the_whole_corpus():
+    """Regression: computed on each agent's slice, every turn looks ineligible.
+
+    Eligibility is a property of where a turn sat in its conversation, which one
+    agent's rows cannot show. The first version of this reported n/a for every
+    agent while the overall figure was 41%.
+    """
+    for i in range(4):
+        store.record_generation(
+            conversation_id="c2", agent_id="gardener", model="m2", latency_ms=1,
+            transcript_len=i * 2, text="Who else depends on this?",
+        )
+        store.record_generation(
+            conversation_id="c2", agent_id="introspector", model="m2", latency_ms=1,
+            transcript_len=i * 2 + 1,
+            text="The Gardener, you are talking about other people again.",
+        )
+    r = analytics.chat_feel_report("m2")
+    per = r["per_agent"]
+    assert per["introspector"]["opens_on_another_share"] == 1.0
+    assert per["gardener"]["opens_on_another_share"] == 0.0

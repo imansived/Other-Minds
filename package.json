@@ -12,6 +12,7 @@
     "start": "next start",
     "report": "node scripts/py.mjs backend/scripts/report.py",
     "seed": "node scripts/py.mjs backend/scripts/seed_corpus.py",
+    "check": "node scripts/py.mjs backend/scripts/check_build.py",
     "test": "npm run test:api && npm run test:ui",
     "test:api": "node scripts/py.mjs -m pytest backend/tests -q",
     "test:ui": "node scripts/py.mjs -m pytest ui/tests -q"
