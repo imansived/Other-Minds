@@ -141,6 +141,53 @@ def test_double_turn_rate_is_about_one_in_four():
     assert 0.23 < repeats / n < 0.27
 
 
+def test_asking_for_another_mind_never_returns_the_same_one():
+    """"hear another mind" is a request for someone ELSE, in those words.
+
+    The double turn is right when the person replies and the room carries on by
+    itself. It is a broken promise when they pressed the button. Observed in a
+    real conversation: The Introspector spoke, was asked for another mind, and
+    spoke again — with nothing in the UI to explain why.
+    """
+    rng = random.Random(7)
+    for _ in range(5_000):
+        assert pick_next_speaker("gardener", allow_same=False, rng=rng) != "gardener"
+
+
+def test_excluding_the_last_speaker_still_splits_evenly():
+    """Excluding one agent must not bias the draw toward either survivor."""
+    rng = random.Random(11)
+    counts = {"introspector": 0, "behaviorist": 0}
+    for _ in range(20_000):
+        counts[pick_next_speaker("gardener", allow_same=False, rng=rng)] += 1
+    lo, hi = sorted(counts.values())
+    assert hi / lo < 1.06, f"uneven split: {counts}"
+
+
+def test_the_opening_turn_ignores_the_exclusion():
+    """With nobody having spoken there is nothing to exclude.
+
+    The flag travels on every request, including the first one, so this is the
+    path taken every time a conversation starts.
+    """
+    seen = {
+        pick_next_speaker(None, allow_same=False, rng=random.Random(s))
+        for s in range(60)
+    }
+    assert seen == set(AGENT_IDS)
+
+
+def test_a_reply_still_allows_the_double_turn():
+    """The fix must not quietly delete the organic case it was scoped around."""
+    rng = random.Random(1234)
+    n = 20_000
+    repeats = sum(
+        pick_next_speaker("gardener", allow_same=True, rng=rng) == "gardener"
+        for _ in range(n)
+    )
+    assert 0.23 < repeats / n < 0.27
+
+
 def test_non_repeat_turns_are_split_evenly_between_the_other_two():
     rng = random.Random(99)
     counts = {"introspector": 0, "behaviorist": 0}

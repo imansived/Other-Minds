@@ -33,7 +33,17 @@ class AuthFailed(RuntimeError):
 
 
 class RateLimited(RuntimeError):
-    """The provider refused the call for quota reasons."""
+    """The provider refused the call for quota reasons.
+
+    `per_day` distinguishes the two cases, and the difference is the whole
+    point: a per-minute limit clears on its own in seconds, a per-day one does
+    not clear until tomorrow. Callers that retry need to know which, or they
+    burn time retrying something that cannot succeed.
+    """
+
+    def __init__(self, message: str, *, per_day: bool = False):
+        super().__init__(message)
+        self.per_day = per_day
 
 
 class UpstreamRefused(RuntimeError):
@@ -179,10 +189,16 @@ async def generate_turn(agent: AgentConfig, transcript: list[ChatMessage]) -> st
     try:
         reply = await model.ainvoke(build_messages(agent, transcript))
     except ModelRateLimitError as err:
+        per_day = "PerDay" in str(err)
         raise RateLimited(
-            "The model provider is rate limiting us. On the Gemini free tier "
-            f"{settings.model} allows only a small number of requests per day — "
-            "wait a moment, or try a different model."
+            "The model provider is rate limiting us. "
+            + (
+                f"The per-day free-tier quota for {settings.model} is used up — "
+                "it will not clear until tomorrow. Try another model."
+                if per_day
+                else "That is the per-minute limit; it clears in a moment."
+            ),
+            per_day=per_day,
         ) from err
     except (ModelAuthenticationError, ModelPermissionDeniedError) as err:
         raise AuthFailed("Authentication failed — check GEMINI_API_KEY.") from err

@@ -40,7 +40,7 @@ Length is not something you choose. It follows from the move: naming one assumpt
 
 One move does not mean one sentence. A move can take two or three short ones. Never fuse a turn into a single long sentence strung together with semicolons and subordinate clauses — that is a paragraph in disguise, and it is harder to read than the paragraph would have been. Short sentences are what speech actually sounds like.
 
-Never end on a line that sums up your turn. No closing verdict, no moral, no "it's not X, it's Y", no sentence that could be lifted out and quoted on its own. Stop on the last piece of the point, not on a bow tied around it.
+Never end on a line that sums up your turn. No closing verdict, no moral, no "it's not X, it's Y", no sentence that could be lifted out and quoted on its own. Stop on the last piece of the point, not on a bow tied around it. The shape it takes most often is a last sentence that points back at your own turn and tells them what it proved: "that is the only test that matters", "that is your answer", "the only thing that remains is what you did", "that will tell you whether it is real". If your final sentence could be deleted and nothing would be lost except the feeling of having concluded, delete it. Stop on the observation.
 
 Do not reuse another agent's phrasing or imagery. If The Behaviorist has already reached for a particular image, find your own way to put it or don't refer to it at all.
 

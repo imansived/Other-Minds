@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from google.genai.errors import APIError
 
 from app.agents.registry import agents, get_agent
+from app.build import BUILD, STARTED_AT
 from app.config import settings
 from app.llm import (
     AuthFailed,
@@ -63,12 +64,21 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict:
-    """Liveness plus the two things that actually go wrong: key and prompts."""
+    """Liveness, plus the things that actually go wrong.
+
+    `build` is the fingerprint of the source this process LOADED, not of the
+    source on disk — see app/build.py. Compare it against a fresh
+    `fingerprint()` (npm run check) to find out whether the server is serving
+    the code you are looking at. It is reported here rather than logged because
+    the question "is my edit live?" is asked from outside the process.
+    """
     return {
         "ok": True,
         "model": settings.model,
         "has_api_key": bool(settings.gemini_api_key),
         "agents": sorted(agents().keys()),
+        "build": BUILD,
+        "started_at": STARTED_AT,
     }
 
 
@@ -81,7 +91,9 @@ async def next_speaker(body: NextSpeakerRequest) -> JSONResponse:
     should pass the returned id straight back to /agent/turn as `agentId`; a
     client that skips this and omits `agentId` just gets an independent draw.
     """
-    picked = pick_next_speaker(last_agent_speaker(body.transcript))
+    picked = pick_next_speaker(
+        last_agent_speaker(body.transcript), allow_same=body.allow_same_speaker
+    )
     return JSONResponse({"agentId": picked})
 
 
@@ -97,7 +109,9 @@ async def agent_turn(body: TurnRequest) -> JSONResponse:
     With `agentId` omitted the server picks the next speaker, so the client no
     longer controls turn order.
     """
-    agent_id = body.agent_id or pick_next_speaker(last_agent_speaker(body.transcript))
+    agent_id = body.agent_id or pick_next_speaker(
+        last_agent_speaker(body.transcript), allow_same=body.allow_same_speaker
+    )
     agent = get_agent(agent_id)
     if agent is None:
         return JSONResponse({"error": f"Unknown agent: {agent_id}"}, status_code=400)

@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import store  # noqa: E402
 from app.agents.registry import get_agent  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.llm import generate_turn  # noqa: E402
+from app.llm import RateLimited, generate_turn  # noqa: E402
 from app.orchestrator import last_agent_speaker, pick_next_speaker  # noqa: E402
 from app.schemas import ChatMessage  # noqa: E402
 
@@ -107,7 +107,17 @@ async def generate_with_retry(agent, transcript, pacer: Pacer, attempts: int = 5
         await pacer.wait()
         try:
             return await generate_turn(agent, transcript)
-        except Exception as err:  # noqa: BLE001 - rate limits are expected here
+        except RateLimited as err:
+            # generate_turn now classifies this for us. Before it did, the
+            # seeder sniffed the raw provider string — and when the exception
+            # type changed, that sniffing silently stopped matching, so
+            # rate-limited turns were SKIPPED rather than retried. Skipping
+            # biases the corpus exactly where retrying was meant to protect it.
+            last_error = err
+            if err.per_day:
+                raise DailyQuotaExhausted(str(err)) from err
+            wait = 20.0 * attempt
+        except Exception as err:  # noqa: BLE001 - anything else is not ours to retry
             last_error = err
             if "RESOURCE_EXHAUSTED" not in str(err) and "429" not in str(err):
                 raise

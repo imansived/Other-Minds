@@ -31,6 +31,10 @@ class TurnRequest(CamelModel):
     # Attributes the generated turn to a stored conversation. Optional: a turn
     # taken before anything is saved still gets recorded, just unattributed.
     conversation_id: str | None = Field(default=None, alias="conversationId")
+    # False when the person explicitly asked for a DIFFERENT mind. See
+    # orchestrator.pick_next_speaker. Defaults true, so an ordinary reply keeps
+    # the organic double turn.
+    allow_same_speaker: bool = Field(default=True, alias="allowSameSpeaker")
 
 
 class TurnResponse(CamelModel):
@@ -44,6 +48,7 @@ class ErrorResponse(BaseModel):
 
 class NextSpeakerRequest(CamelModel):
     transcript: list[ChatMessage] = Field(min_length=1)
+    allow_same_speaker: bool = Field(default=True, alias="allowSameSpeaker")
 
 
 class NextSpeakerResponse(CamelModel):
