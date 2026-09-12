@@ -242,8 +242,8 @@ def test_a_short_previous_turn_does_not_trigger_the_shorten_nudge():
     ]
     note = rhythm_for("behaviorist", t)
     assert "does not need to be that long" not in note
-    # It should be pointed at the agent who just spoke instead.
-    assert "The Gardener just spoke" in note
+    # It should be pointed at the fact that someone else has the floor instead.
+    assert "Someone else has the floor" in note
 
 
 def test_another_agent_speaking_invites_a_direct_short_answer():
@@ -252,8 +252,31 @@ def test_another_agent_speaking_invites_a_direct_short_answer():
         ChatMessage(role="introspector", content="what do you feel about it?"),
     ]
     note = rhythm_for("gardener", t)
-    assert "The Introspector just spoke" in note
+    assert "Someone else has the floor" in note
     assert "four words" in note
+
+
+@pytest.mark.parametrize("speaker", ["introspector", "behaviorist", "gardener"])
+def test_the_note_never_names_another_agent(speaker):
+    """The envelope must not hand the model the opener the prompts ban.
+
+    Measured, not guessed: under a note that opened "The Gardener just spoke.
+    You can answer them directly", 47% of turns began "The Gardener, you are
+    assuming..."; under the note that names no one, 0% did. The prohibition
+    lives 1500 words up the system prompt and loses to the last line before
+    "Say what you would actually say next".
+
+    Naming the speaker here costs nothing to remove — the rendered transcript
+    labels every line with who said it.
+    """
+    listener = "gardener" if speaker != "gardener" else "behaviorist"
+    t = [
+        ChatMessage(role="user", content="should I go?"),
+        ChatMessage(role=speaker, content="here is what I think about it."),
+    ]
+    note = rhythm_for(listener, t)
+    for name in ("The Introspector", "The Behaviorist", "The Gardener"):
+        assert name not in note, f"the note handed {listener} the name {name!r}"
 
 
 def test_opening_the_conversation():

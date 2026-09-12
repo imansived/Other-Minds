@@ -123,13 +123,29 @@ def rhythm_note(agent: AgentConfig, transcript: list[ChatMessage]) -> str:
             )
 
     # Someone else just spoke: react to them, briefly, or go elsewhere.
+    #
+    # This branch used to open with the speaker's name — "The Gardener just
+    # spoke. You can answer them directly" — and that one line was producing the
+    # point-counterpoint tic the prompts ban twice over. The evidence is
+    # unambiguous: of the turns taken under the old note, 47% opened "The
+    # Gardener, you are assuming..."; of the turns where the note instead said
+    # the person had spoken, 0% did. Not one.
+    #
+    # The ban was never being ignored. It was being outranked. A prohibition
+    # sitting 1500 words up the system prompt does not survive a closing line
+    # that names the agent and invites a reply to them, read immediately before
+    # "Say what you would actually say next".
+    #
+    # So the note no longer supplies the name. Nothing is hidden by that — the
+    # rendered transcript says who spoke, on every line — and what the note is
+    # for, naming the SITUATION so length follows from it, is untouched.
     if last is not None and last.role != "user" and others:
-        from app.agents.registry import AGENT_NAMES
-
         return (
-            f"{AGENT_NAMES[last.role]} just spoke. You can answer them directly "
-            "— a line is enough, and disagreeing in four words is a real turn — "
-            "or take it somewhere they have not."
+            "Someone else has the floor. If you take up what they said, go at "
+            "the thing itself and not at who said it — your first sentence "
+            "names the claim, never the speaker. A line is enough, and "
+            "disagreeing in four words is a real turn. Or take it somewhere "
+            "no one has."
         )
 
     # Opening the conversation, or replying straight after the person.
