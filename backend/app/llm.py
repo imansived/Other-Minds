@@ -58,7 +58,14 @@ class UpstreamFailed(RuntimeError):
 def get_model() -> ChatGoogleGenerativeAI:
     """Build the chat model once and reuse it across requests."""
     if not settings.gemini_api_key:
-        raise MissingApiKey("Missing GEMINI_API_KEY — set it in .env.local.")
+        # Deliberately not "set it in .env.local": this message reaches
+        # production, where there is no such file. The deployed API takes the
+        # key from the host's environment variables.
+        raise MissingApiKey(
+            "Missing GEMINI_API_KEY — set it in the environment "
+            "(.env.local when running locally, the host's environment "
+            "variables when deployed)."
+        )
     kwargs = dict(
         model=settings.model,
         google_api_key=settings.gemini_api_key,

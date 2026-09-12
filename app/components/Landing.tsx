@@ -39,8 +39,7 @@ export default function Landing({
             <span>One question.</span> <span>Three ways of seeing it.</span>
           </p>
           <p className="landing-sub">
-            They won&apos;t agree — and each will take the conversation
-            somewhere the others wouldn&apos;t.
+            They won&apos;t always agree. That&apos;s the point.
           </p>
         </header>
 
@@ -66,12 +65,11 @@ export default function Landing({
             onChange={onInputChange}
             onSubmit={onSubmit}
             disabled={busy}
-            placeholder="say what you're thinking…"
+            placeholder="put a question on the table…"
             autoFocus
           />
           <p className="landing-hint">
-            they speak one at a time — press <span aria-hidden="true">↑</span> to
-            let another mind speak
+            They speak one at a time. Invite another mind after they speak.
           </p>
         </div>
       </div>

@@ -86,6 +86,39 @@ A few deliberate choices, in [docker/](docker/) and
 > locally and serves pages, portraits and the API proxy. The images themselves
 > have not been built or run — there is no Docker on this machine.
 
+## Deploying
+
+The two halves deploy separately: the API to Railway, the frontend to Vercel.
+
+| | where | how it is found |
+|---|---|---|
+| API | [Railway](https://other-minds-production.up.railway.app/health) | built from `docker/api.Dockerfile` |
+| frontend | Vercel | auto-detected Next.js at the repo root |
+
+The frontend reaches the API through `OTHER_MINDS_API_URL`, set in
+[vercel.json](vercel.json). Nothing else needs changing: the browser never calls
+Railway directly — the route handlers under [`app/api/`](app/api/) proxy to it
+from the server, so there is no CORS to configure and the API key stays out of
+the client bundle.
+
+### What has to be set on Railway
+
+`GEMINI_API_KEY` is a Railway environment variable, not part of the image —
+`.dockerignore` deliberately keeps `.env*` out of the build context so a key can
+never become an image layer. Without it the service still starts and answers
+`/health`, but every turn returns a 500. `/health` reports this directly:
+
+```bash
+curl https://other-minds-production.up.railway.app/health
+# {"ok":true,"has_api_key":false,...}   <- turns will fail
+```
+
+### A caveat about stored conversations
+
+The API keeps conversations in SQLite on the container filesystem. Unless a
+persistent volume is mounted at `DB_PATH`, a redeploy starts from an empty
+history. That is survivable for a demo and wrong for anything else.
+
 ## Setup (without Docker)
 
 Needs Node and Python 3.12+.

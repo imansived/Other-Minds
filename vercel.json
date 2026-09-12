@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "env": {
+    "OTHER_MINDS_API_URL": "https://other-minds-production.up.railway.app"
+  }
+}

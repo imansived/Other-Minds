@@ -571,8 +571,7 @@ export default function Home() {
                   carrying on without you. Say so, quietly. */}
               {!input.trim() && !busy && (
                 <p className="composer-hint">
-                  or press <span aria-hidden="true">↑</span> to let another mind
-                  speak
+                  or use the arrow to invite another mind
                 </p>
               )}
             </div>
