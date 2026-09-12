@@ -83,7 +83,7 @@ export const AGENT_PORTRAIT_FRAME: Partial<Record<AgentId, PortraitFrame>> = {
 export const AGENT_BLURB: Record<AgentId, string> = {
   introspector: "The mind is known from the inside. What you feel is data.",
   behaviorist: "What you repeatedly do says more than what you say you feel.",
-  gardener: "A life is lived in relationship — not solved alone in your head.",
+  gardener: "A life is lived in relationship — not alone in your head.",
 };
 
 // Inline style object carrying both color variables for a given agent.
