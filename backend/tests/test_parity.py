@@ -90,8 +90,9 @@ def test_prompt_envelope_is_pinned():
         "Here is the conversation so far:\n\n"
         "User: hi\n\n"
         "You are The Introspector. You have just heard all of this.\n\n"
-        "The person has just spoken. You can answer with a single question if "
-        "that is what you actually have.\n\n"
+        "The person has just spoken. Answer them. A single observation is a "
+        "complete turn — ask a question only if you actually want the answer, "
+        "never as a way to round the turn off.\n\n"
         "A single sentence is a complete turn. So is a question, or agreeing in "
         "four words. Take a full paragraph only when you have a case nobody here "
         "has made yet — and then make it properly.\n\n"
@@ -280,9 +281,17 @@ def test_the_note_never_names_another_agent(speaker):
 
 
 def test_opening_the_conversation():
+    """The exemplar here must not be a question.
+
+    This note fires on most turns, and when it named a question as the model
+    short turn, 10 of 16 turns across the six scenarios closed on one. The
+    system prompt's "questions are a move, not a habit" was being outranked by
+    the last line before "Say what you would actually say next".
+    """
     note = rhythm_for("gardener", [ChatMessage(role="user", content="should I go?")])
     assert "person has just spoken" in note
-    assert "single question" in note
+    assert "A single observation is a complete turn" in note
+    assert "only if you actually want the answer" in note
 
 
 def test_the_note_actually_changes_between_situations():

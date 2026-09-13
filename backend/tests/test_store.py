@@ -64,6 +64,22 @@ def test_list_is_newest_first_and_counts_messages():
     assert rows[1]["message_count"] == 1
 
 
+def test_ordering_is_stable_when_timestamps_tie(monkeypatch):
+    """Two saves inside one millisecond must still come back in a fixed order.
+
+    updated_at is milliseconds, so this is reachable in normal use — and it was
+    reachable in the test above, which failed intermittently for exactly this
+    reason before `rowid` was added to the ORDER BY. Freezing the clock makes
+    the tie certain instead of occasional.
+    """
+    monkeypatch.setattr(store, "_now_ms", lambda: 1_700_000_000_000)
+    store.save_conversation("first", "a", msgs(("user", "x")))
+    store.save_conversation("second", "b", msgs(("user", "y")))
+
+    for _ in range(5):
+        assert [r["id"] for r in store.list_conversations()] == ["second", "first"]
+
+
 def test_delete_cascades_to_messages():
     store.save_conversation("c1", "t", msgs(("user", "a"), ("gardener", "b")))
     assert store.delete_conversation("c1") is True

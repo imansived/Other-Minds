@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AGENTS, type AgentId, type ChatMessage } from "@/app/lib/agents";
+import {
+  AGENT_IDS,
+  AGENTS,
+  type AgentId,
+  type ChatMessage,
+} from "@/app/lib/agents";
 import { agentVars } from "@/app/components/agent-theme";
 import Avatar from "@/app/components/Avatar";
 import Composer from "@/app/components/Composer";
@@ -34,7 +39,10 @@ import {
 // Agents still speak ONE message at a time: after each reply the user reads it
 // and chooses to either respond, or press Continue to hear the next agent.
 // Nothing is auto-advanced, so the user is never bombarded.
-const AGENT_IDS: AgentId[] = ["introspector", "behaviorist", "gardener"];
+//
+// The landing's reading order comes from AGENT_IDS in app/lib/agents.ts, beside
+// the registry it is derived from — a second hand-written list here had nothing
+// tying it to the first.
 
 // The composing indicator stays up for at least this long even if the API
 // returns instantly — a brief deliberate pause reads better than a text dump.
@@ -460,7 +468,13 @@ export default function Home() {
               ref={conversationRef}
               onScroll={trackScrollPosition}
             >
-              <div className="thread">
+              {/* A screen reader got nothing at all when a mind spoke: the
+                  message was appended to a plain div, so the only way to know
+                  anyone had answered was to go looking. `log` + polite is the
+                  chat pattern — new children are announced as they arrive,
+                  without interrupting whatever is being read. Polite rather
+                  than assertive because a mind speaking is not an alert. */}
+              <div className="thread" role="log" aria-live="polite">
                 {transcript.map((m, i) => {
                   // A mind may hold the floor for several turns running. When it
                   // does, the run closes up and only the first of them carries a
@@ -513,6 +527,10 @@ export default function Home() {
                   <div
                     className="composing"
                     style={agentVars(composingAgent)}
+                    /* aria-label on a bare div is not reliably exposed — it
+                       needs a role to hang off. status also stops the three
+                       animating dots being announced as content. */
+                    role="status"
                     aria-label={`${AGENTS[composingAgent].name} is about to speak`}
                   >
                     <Avatar agent={composingAgent} size={28} active />
@@ -527,11 +545,28 @@ export default function Home() {
                   </div>
                 )}
 
-                {error && <div className="error">{error}</div>}
+                {/* role="alert" so a failure is spoken when it happens. It is
+                    the one thing here that does interrupt. */}
+                {error && (
+                  <div className="error" role="alert">
+                    {error}
+                  </div>
+                )}
 
                 {/* Invite the next mind in — one message at a time. */}
                 {transcript.length > 0 && !busy && (
-                  <button type="button" className="continue" onClick={advance}>
+                  <button
+                    type="button"
+                    className="continue"
+                    onClick={advance}
+                    /* It sits inside the log region, and it toggles with
+                       `busy` — so without this it would be read out after
+                       every single message, on top of the message itself.
+                       aria-live is inherited and can be switched off per
+                       element; the button is still reachable, just not
+                       narrated as if it were new content. */
+                    aria-live="off"
+                  >
                     {error ? "try again" : "hear another mind"}
                     {!error && (
                       <svg

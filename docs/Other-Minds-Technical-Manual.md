@@ -97,7 +97,8 @@ stopped working."*
                   │  main.py          routes, error → HTTP status mapping     │
                   │  orchestrator.py  WHO SPEAKS NEXT  ← single source of     │
                   │                   truth for the turn rule                 │
-                  │  agents/          registry + prompts/*.md  ← the product   │
+                  │  agents/          registry + prompts/ (lens + _house.md)  │
+                  │                   ← the product                           │
                   │  llm.py           envelope assembly + the one model call   │
                   │  store.py         SQLite: history + append-only telemetry  │
                   │  analytics.py     divergence + chat-feel metrics           │
@@ -376,8 +377,27 @@ a common mistake.
 
 The **system prompt** is the persona: who this agent is, what it notices first, what
 it counts as evidence, what vocabulary it must avoid, what moves it may make in a
-turn. It is ~8.5KB of markdown per agent (~26KB across the three today), it is identical on every call, and it goes
-into Gemini's `systemInstruction` channel (`SystemMessage` in LangChain terms).
+turn. It is identical on every call and goes into Gemini's `systemInstruction`
+channel (`SystemMessage` in LangChain terms).
+
+It is assembled from two files, and the split is load-bearing:
+
+| file | holds | length |
+| --- | --- | --- |
+| `prompts/<agent>.md` | the **lens** — worldview, what this mind notices, what it accepts as evidence, what it values, its blind spot, what it may never assume, its own voice | ~3.5KB each |
+| `prompts/_house.md` | the **house style** — hypothesis vs fact, turn shape, questions, challenging another mind, safety, banned phrasings | ~7KB, one copy |
+
+`registry.compose_prompt` joins them, lens first, and substitutes `__ALL_NAMES__`
+from `AGENT_NAMES` so the roster sentence cannot go stale when a mind is added.
+
+This used to be one self-contained file per agent, which had two costs. The house
+rules existed in triplicate, so every edit had to be made three times or silently
+drift. And each prompt was long enough that the model began dropping rules —
+measured repeatedly: sharpening one behaviour would quietly break another that had
+been holding, because instructions were competing for the same finite attention.
+One shared copy is both the maintenance fix and what keeps each mind's own section
+short enough to carry weight. Adding a fourth mind is now a lens file plus an entry
+in `AGENT_NAMES`.
 
 The **envelope** is everything wrapped around the conversation in the *user* slot, and
 it is rebuilt on every single turn:

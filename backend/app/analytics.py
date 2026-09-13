@@ -27,6 +27,7 @@ from sklearn.pipeline import make_pipeline
 
 from app.agents.registry import AGENT_IDS
 from app.config import settings
+from app.epistemics import mind_reading_share
 from app.store import connect
 
 # Below this, the numbers are noise dressed up as findings.
@@ -424,6 +425,7 @@ def print_chat_feel(model: str | None = None) -> None:
     print(f"  essays (>{f['thresholds']['long_over']}w) {f['long_share']:.0%}"
           f"   reactions (<{f['thresholds']['short_under']}w) {f['short_share']:.0%}")
     print(f"  ends on a quotable verdict  {f['verdict_closer_share']:.0%}")
+    print(f"  mind-reads without owning   {f['unmarked_mind_reading_share']:.0%}")
     opener = f["opens_on_another_share"]
     print(f"  opens by restating a mind   "
           f"{'n/a' if opener is None else format(opener, '.0%')}")
@@ -693,6 +695,14 @@ def chat_feel(turns: pd.DataFrame) -> dict:
         # The point-counterpoint tic: opening by restating another mind's
         # position. Banned in the prompts, never actually held. Reported over
         # turns where another mind had already spoken — see _opener_share.
+        # Claims about what the person privately knows, wants or fears, stated
+        # as findings rather than readings. Measured across all three minds
+        # because any of them can do it, but it is the Introspector's
+        # characteristic failure — see app/epistemics.py for why this counts
+        # epistemic marking rather than banned phrases.
+        "unmarked_mind_reading_share": round(
+            mind_reading_share(turns["text"].tolist()), 3
+        ),
         "opens_on_another_share": _opener_share(turns),
         "addresses_another_agent_share": round(float(names_other.mean()), 3),
         "echoes_previous_agent_share": echoed,

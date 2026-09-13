@@ -134,7 +134,14 @@ def list_conversations(limit: int = 60) -> list[dict]:
                    (SELECT COUNT(*) FROM messages m
                      WHERE m.conversation_id = c.id) AS message_count
               FROM conversations c
-             ORDER BY c.updated_at DESC
+             -- rowid breaks the tie, and there IS a tie to break: updated_at
+             -- is milliseconds, and two conversations saved inside the same
+             -- millisecond otherwise come back in whatever order SQLite
+             -- happens to produce. That surfaced as an intermittently failing
+             -- ordering test, but the same indeterminacy reorders the sidebar
+             -- for a reader. rowid is insertion order, so the tie resolves to
+             -- most-recently-created first, which is the same intent.
+             ORDER BY c.updated_at DESC, c.rowid DESC
              LIMIT ?
             """,
             (limit,),

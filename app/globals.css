@@ -1136,6 +1136,54 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Reachable — keyboard focus, and targets big enough for a thumb
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* There was no focus ring anywhere in the room. Two controls had styled their
+   own :focus-visible and everything else — send, "hear another mind", the
+   topbar icons, the history rows, the cards on the landing — had nothing, so
+   tabbing through left no trace of where you were. One ring, defined once,
+   tinted to the room rather than the browser's default white slab. Pointer
+   clicks never trigger :focus-visible, so none of this shows for a mouse. */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--introspector) 62%, var(--text));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+/* The pill already answers focus with its own ring (.composer:focus-within),
+   so the textarea inside it does not need a second one drawn on top. */
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+/* Touch, measured by input device rather than by window width: a small window
+   on a laptop is still a mouse, and a tablet at 1024px is still a thumb.
+   Everything here grows the HIT AREA without moving the ink, so the layout is
+   unchanged — the controls simply stop being 25-34px targets. */
+@media (pointer: coarse) {
+  .continue {
+    /* Was 6px 2px — about 25px tall in total, against a 44px guideline. */
+    padding: 14px 12px;
+    margin-top: 18px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .mute-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .send {
+    width: 42px;
+    height: 42px;
+  }
+  .history-delete {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Scrollbars — present, but not part of the furniture
    ═══════════════════════════════════════════════════════════════════════════ */
 /* The platform default is a wide slab with an arrow button at each end, and in
@@ -1307,8 +1355,18 @@ body {
   .composer {
     padding: 5px 5px 5px 15px;
   }
+}
+
+/* iOS Safari zooms the whole viewport when a focused field is under 16px, and
+   it does not zoom back out afterwards: the room ends up scaled, the composer
+   half off-screen, and the only way back is a manual pinch. The field was
+   0.88rem (≈14px), so this fired on every tap into the box on an iPhone.
+   16px is the documented threshold and the only fix that does not involve
+   user-scalable=no, which would take pinch-zoom away from everyone who needs
+   it. Slightly larger than the design intended, and better to type in. */
+@media (pointer: coarse) {
   .composer textarea {
-    font-size: 0.87rem;
+    font-size: 16px;
   }
 }
 

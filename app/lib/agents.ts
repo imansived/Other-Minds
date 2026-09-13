@@ -23,31 +23,29 @@ export interface ChatMessage {
 export interface AgentConfig {
   id: AgentId;
   name: string;
-  // Tailwind classes used to visually distinguish this agent in the UI.
-  bubbleClass: string;
-  nameClass: string;
 }
 
 export const AGENTS: Record<AgentId, AgentConfig> = {
   introspector: {
     id: "introspector",
     name: "The Introspector",
-    bubbleClass:
-      "bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-900",
-    nameClass: "text-indigo-700 dark:text-indigo-300",
   },
   behaviorist: {
     id: "behaviorist",
     name: "The Behaviorist",
-    bubbleClass:
-      "bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900",
-    nameClass: "text-amber-700 dark:text-amber-300",
   },
   gardener: {
     id: "gardener",
     name: "The Gardener",
-    bubbleClass:
-      "bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-900",
-    nameClass: "text-emerald-700 dark:text-emerald-300",
   },
 };
+
+/**
+ * Turn order is the backend's business — this is only the reading order for the
+ * three cards on the landing screen.
+ *
+ * Derived from AGENTS rather than written out again, so a fourth mind appears
+ * on the landing by virtue of existing. The hand-kept copy this replaces sat in
+ * page.tsx, where nothing connected it to the registry it was mirroring.
+ */
+export const AGENT_IDS = Object.keys(AGENTS) as AgentId[];

@@ -31,7 +31,15 @@ export default function Sidebar({
     <aside
       className={`sidebar${collapsed ? " collapsed" : ""}${mobileOpen ? " mobile-open" : ""}`}
       aria-label="Conversation history"
+      /* Collapsed means width 0 with overflow hidden, so the panel is invisible
+         but its buttons stayed in the tab order — aria-hidden alone produced
+         the classic trap where tabbing lands you on a control you cannot see
+         and a screen reader refuses to name. `inert` removes the whole subtree
+         from focus and from the a11y tree together; React 19 takes it as a
+         boolean prop. Keep both: aria-hidden for assistive tech on the older
+         path, inert for focus. */
       aria-hidden={collapsed && !mobileOpen}
+      inert={collapsed && !mobileOpen}
     >
       <div className="sidebar-inner">
         <div className="sidebar-head">

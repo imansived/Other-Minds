@@ -156,9 +156,22 @@ def rhythm_note(agent: AgentConfig, transcript: list[ChatMessage]) -> str:
         )
 
     # Opening the conversation, or replying straight after the person.
+    #
+    # This branch fires on most turns, and it used to end "...you can answer
+    # with a single question if that is what you actually have." Naming a
+    # question as THE example of a short turn is an invitation, and it was
+    # taken: 10 of 16 turns in a six-scenario run closed on one, which reads as
+    # an interrogation by the third mind to arrive.
+    #
+    # Same shape as the point-counterpoint bug documented above. The system
+    # prompt's "questions are a move, not a habit" was not being ignored, it was
+    # being outranked by the last line read before "Say what you would actually
+    # say next". So the exemplar is now an observation, and the question is
+    # allowed with the condition attached rather than offered as the default.
     return (
-        "The person has just spoken. You can answer with a single question if "
-        "that is what you actually have."
+        "The person has just spoken. Answer them. A single observation is a "
+        "complete turn — ask a question only if you actually want the answer, "
+        "never as a way to round the turn off."
     )
 
 
