@@ -598,7 +598,7 @@ export default function Home() {
                 onChange={setInput}
                 onSubmit={handleSend}
                 disabled={busy}
-                placeholder="say what you're thinking…"
+                placeholder="put a question on the table…"
                 muted={muted}
                 onToggleMute={toggleMute}
               />

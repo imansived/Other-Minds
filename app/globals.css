@@ -193,19 +193,28 @@ body {
   position: absolute;
   border-radius: 50%;
   background: #f2efe8;
-  /* Names, durations and delays are set per star inline; a star can carry
-     both the twinkle and the float at once. */
+  /* Names and delays are set per star inline; a star can carry both the
+     twinkle and the float at once. Brightness and duration are not set there
+     — the star supplies them as --star-o and --a1/--a2, and these two lines
+     scale them by one factor for the whole sky. Both factors are 1 unless a
+     media query says otherwise, so this computes to what it always did. */
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
+  opacity: calc(var(--star-o, 1) * var(--sky-star-o, 1));
+  animation-duration:
+    calc(var(--a1, 0s) * var(--sky-speed, 1)),
+    calc(var(--a2, 0s) * var(--sky-speed, 1));
 }
 
+/* The two ends of a twinkle are variables, so a screen can lower the ceiling
+   without touching the floor. 0.18 → 1 is the sky as it was. */
 @keyframes twinkle {
   0%,
   100% {
-    opacity: 0.18;
+    opacity: var(--tw-lo, 0.18);
   }
   50% {
-    opacity: 1;
+    opacity: var(--tw-hi, 1);
   }
 }
 /* A slow wander of a few pixels, per star, so the field never looks pinned. */
@@ -276,6 +285,55 @@ body {
   }
   100% {
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ── The same sky, on a phone ──────────────────────────────────────────────
+   None of this removes the stars. A narrow viewport doesn't move them closer
+   together, it just leaves less room between them and what you are reading,
+   and the result is a field that asks to be watched rather than one you
+   notice. Four adjustments, and the desktop sky reads none of them:
+
+     fewer      every third star is dropped — about 100 left of 150
+     dimmer     the whole field down to 0.62, and a twinkle now peaks at 0.5
+                instead of going all the way to white
+     calmer     twinkle and float take three times as long; the layer drift
+                roughly doubles, so nothing completes a move while you look
+     clear      stars behind the reading column are dimmed furthest, and the
+                bright handful are chosen only from those outside it
+
+   The last one is the one that matters: what makes a star distracting is not
+   that it is bright, it is that it is bright behind a sentence. */
+@media (max-width: 720px) {
+  .galaxy {
+    --sky-star-o: 0.62;
+    --sky-speed: 3;
+    --tw-lo: 0.1;
+    --tw-hi: 0.5;
+  }
+  /* Every third star, by index. Position is random, so index has nothing to
+     do with where a star is — the field thins evenly rather than in patches. */
+  .star-thin {
+    display: none;
+  }
+  /* Behind the text. Present, but never competing with a line of type. */
+  .star-mid {
+    --sky-star-o: 0.5;
+    --tw-hi: 0.34;
+  }
+  /* The handful that stay bright, all of them outside the reading column. */
+  .star-keep {
+    --sky-star-o: 0.95;
+    --tw-hi: 0.85;
+  }
+  .drift-a {
+    animation-duration: 190s;
+  }
+  .drift-b {
+    animation-duration: 126s;
+  }
+  .drift-c {
+    animation-duration: 84s;
   }
 }
 
@@ -694,7 +752,7 @@ body {
   margin: 12px 0 0;
   text-align: center;
   font-size: 0.72rem;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 66%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1019,7 +1077,7 @@ body {
   text-align: center;
   font-size: 0.66rem;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  color: color-mix(in srgb, var(--muted) 58%, transparent);
   animation: settle-in 0.6s ease-out both;
 }
 
@@ -1066,7 +1124,7 @@ body {
   font-family: var(--ui);
   font-size: 0.88rem;
   line-height: 1.55;
-  padding: 10px 0;
+  padding: 13px 0 7px;
   /* The starting height. JS takes over on the first paint. */
   height: 41px;
   max-height: 168px;
