@@ -1,9 +1,15 @@
 # Other Minds — Technical Manual
 
-**Scope:** the state of the project as of 26 August 2026, written for the person who
+**Scope:** the state of the project as of 25 September 2026, written for the person who
 built it. It is not a tour of the file tree; the file tree is in the READMEs. This is
 the reasoning: what each decision bought, what it cost, what was tried first and
 failed, and what the measurements actually say.
+
+This is a living document, not a snapshot taken once and left — §3.9, the `build`
+column (§3.8), and the summoning rules (§3.3) were all added in this revision, after
+being shipped in the code first. A manual that documents a build older than the one
+running is worse than no manual, because it reads as authoritative while being wrong;
+the appendix at the bottom exists to make that failure visible rather than silent.
 
 **How to read it for interview prep.** Every section is written so the *why* survives
 on its own. If you can restate the "why" of a section without looking at the code, you
@@ -512,47 +518,30 @@ because a router would introduce a fourth opinion into a product whose entire pr
 is three fixed ones. Option 2 was rejected because strict rotation reads as
 mechanical; real group conversations have someone jumping back in.
 
-The actual rule, in full — this is the entire `backend/app/orchestrator.py` minus its
-module docstring:
+The weighted-random draw, `pick_next_speaker` — this is the core of
+`backend/app/orchestrator.py`, module docstring elided:
 
 ```python
-import random
-
-from app.agents.registry import AGENT_IDS
-from app.config import settings
-from app.schemas import AgentId, ChatMessage
-
-
-def last_agent_speaker(transcript: list[ChatMessage]) -> AgentId | None:
-    """The last agent (not the user) to have spoken, or None."""
-    for m in reversed(transcript):
-        if m.role != "user":
-            return m.role  # type: ignore[return-value]
-    return None
-
-
 def pick_next_speaker(
     last: AgentId | None,
     *,
+    allow_same: bool = True,
     rng: random.Random | None = None,
 ) -> AgentId:
-    """Who speaks next, given who spoke last (None when no agent has yet).
-
-    `rng` is injectable so tests can make the draw deterministic.
-    """
+    """Who speaks next, given who spoke last (None when no agent has yet)."""
     r = rng or random
+    others = [a for a in AGENT_IDS if a != last]
     if last is None:
         return r.choice(AGENT_IDS)
-    if r.random() < settings.double_turn_chance:
+    if allow_same and r.random() < settings.double_turn_chance:
         return last
-    return r.choice([a for a in AGENT_IDS if a != last])
+    return r.choice(others or [last])
 ```
 
-That is the whole thing — about twenty lines, and worth noticing how little of it there
-is. The `double_turn_chance` is read from settings rather than hardcoded, which is what
+The `double_turn_chance` is read from settings rather than hardcoded, which is what
 lets `analytics.turn_taking` compare the observed rate against the configured one
-rather than against a magic number. And `last_agent_speaker` skipping user messages is
-why a person can interject without resetting the rotation.
+rather than against a magic number. `last_agent_speaker` skipping user messages is why
+a person can interject without resetting the rotation.
 
 Here is the test that the `rng` parameter exists to make possible
 (`backend/tests/test_parity.py`):
@@ -582,10 +571,73 @@ injectable so the tests are deterministic — a small design detail with a large
 because "test a random function" otherwise means either flakiness or monkeypatching
 the global module.
 
-The important architectural point is not the algorithm. It is that this function is
-the **single source of truth**, consumed by three independent callers — the Next.js
-app via the proxy, the Streamlit app via HTTP, and the seed script via direct import —
-and audited by a fourth (`analytics.turn_taking`).
+**`allow_same` — two different requests that happen to run the same code.** When the
+person replies with text, the room carries on, and whoever is mid-thought may well
+keep it — that is the wanted double turn. When the person presses *hear another mind*,
+they have asked for someone else in those words, and letting the draw return the same
+agent one time in four breaks the only promise the button makes. This was a real
+observed bug: The Introspector answered, was asked for another mind, and answered
+again, with nothing in the UI explaining why. `allow_same=False` is what the button
+passes; an ordinary reply passes `True`.
+
+**Summoning — asking for a mind by name.** Reported from testing: *"when I want a
+particular opinion of one agent I even call them explicitly, but randomly anyone was
+coming."* The draw was ignoring the one thing the person had said unambiguously.
+`summoned()` checks the person's own most recent message for a name (`"Introspector"`,
+`"the gardener"`, either case, either form) and `choose_speaker()` is the entry point
+every client should call — the summons wins outright, otherwise it falls through to
+the ordinary weighted draw:
+
+```python
+def summoned(transcript: list[ChatMessage]) -> AgentId | None:
+    """The mind the person asked for by name, or None if they asked for no one."""
+    if not transcript:
+        return None
+    last = transcript[-1]
+    if last.role != "user":
+        return None
+    named = [a for a, pattern in _SUMMONS.items() if pattern.search(last.content)]
+    return named[0] if len(named) == 1 else None
+
+
+def choose_speaker(
+    transcript: list[ChatMessage], *, allow_same: bool = True, rng=None,
+) -> AgentId:
+    return summoned(transcript) or pick_next_speaker(
+        last_agent_speaker(transcript), allow_same=allow_same, rng=rng
+    )
+```
+
+Four rules, each closing a specific failure mode rather than being a general
+guess:
+
+- **Only the last message, and only if the person sent it.** Once the named mind
+  answers, the summons is served. If an *older* mention still counted, *hear another
+  mind* would re-elect the same mind forever, because the name never leaves the
+  transcript.
+- **Only the person can summon.** The agents refer to each other by name constantly —
+  the house style requires it — so reading a summons out of an agent's own turn would
+  hand the floor to whoever it mentioned last and collapse the whole draw into
+  ping-pong.
+- **Naming two minds is a topic, not a request.** *"The Gardener and the Behaviorist
+  are both missing something"* falls through to the ordinary draw; picking one of the
+  two named minds arbitrarily would look deliberate and be wrong.
+- **A summons on the mind that just spoke beats `allow_same=False`.** Naming the mind
+  that just answered is a request for more from it, not the mistake `allow_same=False`
+  exists to correct.
+
+`choose_speaker` is what both HTTP routes call (`/agent/next-speaker` and
+`/agent/turn`), so both UIs get summoning for free without either one knowing the rule
+exists — the same "single source of truth, multiple callers" shape §2.4 already
+established. One asymmetry worth knowing: `seed_corpus.py` calls `pick_next_speaker`
+directly rather than `choose_speaker`, because the corpus it generates has no person
+typing a name into it — summoning is a UI-facing feature with nothing to attach to in
+a script that writes both sides of the conversation.
+
+The important architectural point is not the algorithm. It is that `choose_speaker`
+(built on `pick_next_speaker`) is the **single source of truth** for who speaks next,
+consumed by every real caller — the Next.js app via the proxy, the Streamlit app via
+HTTP — and audited independently by `analytics.turn_taking`.
 
 ### 3.4 The rhythm note: state-conditioned prompting
 
@@ -949,8 +1001,15 @@ retry, a duplicate, or an out-of-order save produces the *same* end state. An ap
 API would need de-duplication and ordering logic; full replace needs neither.
 
 **Append-only telemetry.** `generations` is never rewritten, so it survives the
-full-replace above. It also stamps the model on every row. That makes it the honest
-corpus — the one where a turn can always be attributed to what produced it.
+full-replace above. It stamps the **model** on every row, and — since this was found
+to be insufficient on its own — the **build** too: a short fingerprint of the source
+that produced the turn (`app/build.py`, §4.3 and §4.4). Model alone cannot say which
+revision of the *prompts* a row came from, and the prompts are the product; without
+`build`, every prompt edit ever shipped pools into one number and "did the change
+work" cannot be answered from stored data — it has to be answered by spending fresh
+API quota on a new run, every single time. `build` is nullable and migrated the same
+way `text` was: a row written before the column existed keeps `NULL` rather than being
+guessed into a bucket it cannot be shown to belong to.
 
 **WAL mode.** Write-Ahead Logging, set once at init. In the default journal mode a
 writer blocks readers. In WAL, readers read the main file while the writer appends to a
@@ -959,6 +1018,65 @@ being recorded. A connection is opened per operation rather than shared, because
 runs sync endpoints in a threadpool and a `sqlite3` connection is not thread-safe.
 `PRAGMA foreign_keys = ON` is set per connection, because SQLite defaults it *off* and
 the messages cascade depends on it.
+
+### 3.9 Behavioural detectors: testing reasoning, not vocabulary
+
+Two prompt rules needed a way to say whether the model was actually obeying them —
+"an abstract question is a real question" (don't secretly convert it into a question
+about the person) and "a lens, not an instruction" (don't let a suggestion harden into
+an order). Neither is a phrase to ban. Both are a *stance toward a claim*, and the same
+words can be on either side of it:
+
+```
+"You already know you want to leave."                          — asserted
+"I wonder if you already know you want to leave."               — proposed
+```
+
+Banning "you already know" would have caught neither correctly: it fires on the second
+line just as hard as the first, when the second is the one the prompt is *asking for*.
+`backend/app/epistemics.py` looks for the CLAIM pattern, then checks whether an
+EPISTEMIC MARKER governs it — "I wonder", "might", "one reading is", a trailing
+question mark. Flagged only when the claim appears with no marker attached.
+
+This generalises past mind-reading. `personalises_the_question` catches a mind
+substituting an invented personal question for the abstract one actually asked
+("when people ask that, they're usually…") unless it is offered as an explicit branch
+("if you're asking because…"). `prescribes` catches a suggestion that hardened into an
+order ("tell them no, that's the only way") unless it is offered as an experiment
+("you could try declining, and see what happens") or the sentence is *quoting* a claim
+in order to challenge it.
+
+**Every regression test in this file is a matched pair on the same words** — a bad
+line and a good line built from the same underlying claim — so a test cannot be
+satisfied by deleting a phrase from the prompt; it has to be satisfied by the model
+actually distinguishing assertion from proposal. `test_this_is_not_a_phrase_ban`
+enforces the pairing mechanically: every "banned-sounding" phrase is asserted to also
+appear on the *passing* side of some pair.
+
+**Three bugs found by reading transcripts, not by the tests passing:**
+
+1. **Gemini writes curly apostrophes (`’`); the patterns were written with straight
+   ones (`'`).** `You're afraid that…` matched; `You’re afraid that…` did not — silently
+   clearing exactly the sentences the detector existed to catch. The metric read 0%
+   while the failure was sitting in the transcript. Fixed by normalising apostrophes
+   before matching, and pinned with a test built from the literal offending sentence.
+2. **A banned word swapped for a synonym slipped through.** The prompt bans "he
+   deserves"; a live turn wrote "he has a right to know" — same entitlement claim,
+   different words, and the metric improved while nothing had changed. There is no
+   general fix for this class of bug; the fix is to keep reading transcripts and keep
+   adding the synonym when it shows up, which is why the test file's bad examples are
+   pulled from real output rather than invented.
+3. **Attribution-order laundering.** "The claim that you need to tell him, rather than
+   *assuming* the marriage is felt the same way…" contains the word "assuming"
+   *after* the claim it was supposed to excuse, and a position-blind check cleared it.
+   `_earliest()` now requires the attribution word to appear *before* what it governs,
+   or the claim still counts.
+
+The general lesson, stated once so it does not have to be relearned: **a detector that
+reports a clean number is not evidence of correctness until someone has tried to read
+past it.** Every one of the three bugs above shipped with tests that passed. What
+caught them was reading the actual generated transcript and noticing a sentence the
+number said should not be there.
 
 ---
 
@@ -1762,43 +1880,57 @@ that says B replaced one uniformity with another.
 
 ### 5.5 What the numbers say right now
 
-Divergence corpus — 77 stored agent turns across 16 conversations
-(introspector 27, behaviorist 26, gardener 24):
+Live output of `npm run report`, current as of this writing — 87 stored agent turns
+across 17 conversations (behaviorist 34, gardener 28, introspector 25):
 
 ```
-separability   accuracy 0.753  vs chance 0.333  (+0.42)   ->  DISTINCT
-per-agent recall   behaviorist 0.731 · gardener 0.750 · introspector 0.778
-most confused      behaviorist mistaken for introspector (5x)
-names masked       0.740 (-0.013)  -> voice, not name-dropping
-turn taking        same speaker again 0.23  (configured 0.25, n=61)  ok
-lexical similarity mean 0.699  (gardener vs introspector 0.623 · behaviorist vs introspector 0.781)
-latency            median 7420ms over 180 generations
+separability   accuracy 0.759  vs chance 0.333  (+0.425)   ->  DISTINCT
+per-agent recall   behaviorist 0.794 · gardener 0.750 · introspector 0.720
+most confused      gardener mistaken for behaviorist (5x)
+names masked       0.713 (+0.046) -> voice, not name-dropping
+turn taking        same speaker again 0.229  (configured 0.25, n=70)  ok
+lexical similarity mean 0.708  (gardener vs introspector 0.616 · behaviorist vs introspector 0.756)
+latency            median 7541ms over 250 generations
 ```
 
 Distinctive terms — the qualitative check that the prompts are still biting:
 
-- **introspector** — picture, feel, chest, grateful, morning, notice, body
-- **behaviorist** — did, happened, times, spend, years, spent, months, doing
-- **gardener** — people, mentioned, person, talked, shared, depends, family
+- **introspector** — feel, fact, grateful, picture, chest, want, body
+- **behaviorist** — did, times, year, look, haven, spend, months, hours
+- **gardener** — people, talked, shared, person, mentioned, depends, friend
 
 Read those as evidence about the *bans*, not just the personas: the Gardener's list
 contains no gardening imagery and the Introspector's contains no spiritual vocabulary,
 which is what those prompt rules exist to prevent. If gardening words reappear in that
 list, the "no nature metaphors" rule has stopped working.
 
-Chat-feel over 147 recorded generations (all three eras mixed, so read the per-era table
-in §5.4 for the trend): mean 61 words, median 35, cv 0.85, range 3–234,
-10% short turns, 24% long, echo rate 0.60, name-callout rate 0.31.
+Chat-feel, `gemini-3.5-flash` only (59 generations with recorded text): mean 57.7
+words, median 56, cv 0.41, range 20–120, 0% short turns, 5% long, 5% end on a
+quotable verdict, 5% unmarked mind-reading, **0% personalise an abstract question,
+5% let a lens harden into an order** (the last two are the newest metrics — see §3.9
+— and this is the first time either has a number attached to it from the real
+corpus rather than a one-off scenario run), 30% open by restating another mind,
+echo rate 0.73.
+
+Every row above predates the `build` column (§3.8) and reads as `unknown` in
+`npm run report -- --builds` — this corpus cannot be split into before/after any
+specific prompt edit. The next real prompt change is the first one `--build current`
+will actually be able to isolate.
 
 ### 5.6 Known limits of these numbers
 
 Being able to state these is what separates a measured claim from a marketing one:
 
-- **77 turns is small.** Above the refusal threshold, well below comfortable. The
-  confidence interval on 0.753 is wide.
-- **The corpus mixes models and eras.** Divergence turns come from `messages`; the
-  chat-feel corpus is `gemini-3.5-flash-lite` while the app's default is
-  `gemini-3.5-flash`. A corpus seeded with one model does not describe another.
+- **87 turns is small.** Above the refusal threshold, well below comfortable. The
+  confidence interval on 0.759 is wide.
+- **The corpus mixes prompt revisions with no way to separate them.** Every row
+  predates the `build` column, so a change in these numbers over the app's history
+  cannot be attributed to a specific edit — only future rows can be. See §3.8 and §3.9.
+- **The chat-feel slice and the divergence slice are different tables.** Divergence
+  turns come from `messages` (the full-replace conversation history); chat-feel reads
+  `generations` (append-only telemetry) filtered to the shipped model. They will not
+  agree on a turn count, and that is by design, not a bug — see §2.3 and §2.5 for why
+  the split exists.
 - **Lexical similarity is a blunt instrument.** Three agents discussing the same
   questions will always share a lot of words; treat it as a trend across prompt edits,
   not an absolute score.
@@ -1807,10 +1939,21 @@ Being able to state these is what separates a measured claim from a marketing on
 - **Separability measures distinguishability, not quality.** Three agents could be
   perfectly separable and all be bad. That is precisely the trap §5.4 fell into once
   already.
-- **`test_routes.py` does not exercise `/agent/turn`** — it is async, and FastAPI's
-  `TestClient` gives each request its own event loop, which the cached LLM client does
-  not survive. That path is covered end to end against a real server instead. Knowing
-  which path your test suite does *not* cover is part of knowing your test suite.
+- **The behavioural detectors (§3.9) are regex, not a model judging the transcript.**
+  Read a metric of 0% or 5% as "the patterns tried did not fire," not as proof the
+  behaviour never occurs — three bugs were already found in these specific detectors
+  by reading past a clean-looking number, and a fourth is simply unknown until found.
+- **`test_routes.py`'s docstring used to claim `/agent/turn` was "deliberately not
+  exercised here" — corrected while writing this section.** It had gone quietly
+  stale: several tests in that file (including `test_agent_turn_stamps_the_running_
+  build`, added alongside the `build` column) already posted to `/agent/turn`
+  through `TestClient` successfully, by patching `main.generate_turn` directly so
+  the request never reaches the real client. What genuinely still is not, and
+  cannot be, exercised there is a real model call through the cached client, which
+  does not survive `TestClient`'s per-request event loop — that path stays covered
+  end to end against a real server instead. The lesson isn't the specific bullet;
+  it's that a docstring explaining what a test file does NOT cover is itself
+  untested and will drift the moment a new test quietly covers the gap it describes.
 
 ---
 
@@ -2045,12 +2188,30 @@ blurs, so that's the pair whose prompts to separate.
 
 ### Appendix — documentation drift found while writing this
 
-Two small inconsistencies worth fixing, noted so they don't become traps later:
+Two inconsistencies were flagged here in an earlier revision and — worth noting
+plainly — sat unfixed for a while after being flagged, which is itself the lesson: an
+appendix that *describes* drift instead of *fixing* it just becomes a second place for
+the same fact to go stale. Both are now corrected in the source, not just noted here:
 
-- `backend/README.md` states `max_output_tokens=500`. The actual value in `config.py`
-  is **300**, with a comment explaining the change: at 500 the ceiling never bit, so it
-  was lowered to make a rambling turn impossible while leaving room for an earned
-  paragraph.
-- `backend/requirements.txt` refers to a `config.PROVIDER` setting for swapping
+- `backend/README.md` stated `max_output_tokens=500`; `config.py` had already moved to
+  **300**. Fixed in the README, with the same reasoning the config comment gives: at
+  500 the ceiling never bit, so it was lowered to make a rambling turn impossible while
+  leaving room for an earned paragraph.
+- `backend/requirements.txt` referred to a `config.PROVIDER` setting for swapping
   providers. No such setting exists — the swap is done by changing the constructor in
-  `llm.py`, which is what `backend/README.md` correctly describes.
+  `llm.py`. Fixed in the requirements.txt comment to match what `backend/README.md`
+  already correctly described.
+
+Drift found and fixed in *this* revision (see §3.3, §3.8, §3.9, §5.5, §5.6 above for
+the full context on each):
+
+- `test_routes.py`'s own docstring claimed `/agent/turn` was "deliberately not
+  exercised here." Several tests in that file already contradicted it. Corrected.
+- §3.3's orchestrator listing was the pre-summoning version of the file — missing
+  `allow_same`, `summoned`, and `choose_speaker` entirely. Replaced with the current
+  code and the reasoning behind each of the four summoning rules.
+- §5.5's numbers were nearly two months stale (77 turns / 147 generations vs. the
+  actual 87 turns / 250 generations at time of writing) and described a chat-feel
+  corpus on `gemini-3.5-flash-lite` when the app has shipped on `gemini-3.5-flash`
+  since. Replaced with a live `npm run report` run, and both newly-wired reasoning
+  metrics (§3.9) are now included in what §5.5 reports.
