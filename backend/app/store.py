@@ -67,7 +67,14 @@ CREATE TABLE IF NOT EXISTS generations (
     -- unreliable — measured at 76% before this column existed. `generations` is
     -- append-only and model-stamped, which makes it the honest corpus for
     -- analytics. Nullable because rows written before this column exist.
-    text            TEXT
+    text            TEXT,
+    -- Fingerprint of the source that produced this turn (app/build.py). The
+    -- prompts ARE the product, so `model` alone cannot say which version of
+    -- them a row came from — and without that the corpus pools every prompt
+    -- revision into one number and can never answer "did the change work".
+    -- That question was costing a full day of API quota to answer with fresh
+    -- transcripts, because the stored turns could not be split before/after.
+    build           TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
@@ -116,6 +123,11 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(generations)")}
         if "text" not in cols:
             conn.execute("ALTER TABLE generations ADD COLUMN text TEXT")
+        # Same pattern for `build`. Old rows keep NULL: they genuinely came
+        # from an unknown prompt revision, and guessing one would be worse
+        # than admitting it.
+        if "build" not in cols:
+            conn.execute("ALTER TABLE generations ADD COLUMN build TEXT")
 
 
 def _now_ms() -> int:
@@ -215,14 +227,20 @@ def record_generation(
     latency_ms: int,
     text: str,
     transcript_len: int,
+    build: str | None = None,
 ) -> None:
-    """Record one generated turn. Never raises into the request path."""
+    """Record one generated turn. Never raises into the request path.
+
+    `build` is the caller's loaded-source fingerprint. Defaulted rather than
+    required so existing callers keep working, but the route always passes
+    it — a row without one cannot be attributed to a prompt revision later.
+    """
     with connect() as conn:
         conn.execute(
             """INSERT INTO generations (conversation_id, agent_id, model,
                    latency_ms, char_count, word_count, transcript_len,
-                   created_at, text)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   created_at, text, build)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 conversation_id,
                 agent_id,
@@ -233,5 +251,6 @@ def record_generation(
                 transcript_len,
                 _now_ms(),
                 text,
+                build,
             ),
         )

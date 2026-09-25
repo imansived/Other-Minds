@@ -1,10 +1,15 @@
 """HTTP contract for the conversation endpoints.
 
-These use FastAPI's TestClient and make no model calls — the conversation routes
-are sync `def` handlers over sqlite. (The /agent/turn route is deliberately not
-exercised here: it is async and TestClient gives each request its own event
-loop, which the cached LLM client does not survive. It is covered end to end
-against a real server instead.)
+Most of these use FastAPI's TestClient and make no model calls — the
+conversation routes are sync `def` handlers over sqlite. /agent/turn is async
+and TestClient gives each request its own event loop, which the REAL cached
+LLM client does not survive — that path (an actual model call) is covered end
+to end against a real server instead, never here. What CAN run here, and does
+(see the provider-error and build-stamp tests below), is /agent/turn with
+`main.generate_turn` itself patched out, so the request never reaches the
+client that cannot survive the event loop. That is still real coverage of the
+route's own logic — status mapping, error shape, telemetry — it just is not a
+real generation.
 
 The 404 shape matters more than it looks: the UI distinguishes "this
 conversation is gone" from "the service is unreachable" by status code, and
@@ -160,6 +165,32 @@ def test_an_unnamed_question_still_draws_from_all_three(client):
         )
         picked.add(res.json()["agentId"])
     assert picked == {"introspector", "behaviorist", "gardener"}
+
+
+def test_agent_turn_stamps_the_running_build(client, monkeypatch):
+    """A stored turn must carry the fingerprint of the source that produced it
+    (app/build.py), or a prompt change can only be verified by spending fresh
+    API quota — the stored corpus cannot tell before-the-edit turns from
+    after. `main.generate_turn` is patched rather than the model client, the
+    same way test_an_unexpected_exception_still_returns_json does, since the
+    cached LLM client does not survive TestClient's per-request event loop.
+    """
+    import app.main as main
+    from app.build import BUILD
+
+    async def canned(agent, transcript):
+        return "a canned reply"
+
+    monkeypatch.setattr(main, "generate_turn", canned)
+
+    res = client.post("/agent/turn", json=turn_body())
+    assert res.status_code == 200
+
+    with store.connect() as conn:
+        row = conn.execute(
+            "SELECT build FROM generations ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert row["build"] == BUILD
 
 
 # ── Provider failures must never escape as plain text ───────────────────────

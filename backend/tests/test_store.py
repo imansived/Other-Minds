@@ -135,3 +135,68 @@ def test_telemetry_can_be_unattributed():
     with store.connect() as conn:
         row = conn.execute("SELECT conversation_id FROM generations").fetchone()
     assert row["conversation_id"] is None
+
+
+def test_generation_is_stamped_with_the_running_build():
+    """Without this, every prompt revision ever run pools into one number and
+    "did the change work" cannot be answered from stored data — only by
+    spending fresh API quota on a new scenario run. See app/build.py."""
+    store.record_generation(
+        conversation_id="c1", agent_id="gardener", model="m",
+        latency_ms=10, text="x", transcript_len=1, build="abc123",
+    )
+    with store.connect() as conn:
+        row = conn.execute("SELECT build FROM generations").fetchone()
+    assert row["build"] == "abc123"
+
+
+def test_generation_build_defaults_to_null_not_a_guess():
+    """A row with no build passed is honestly unattributable, not silently
+    assigned to whatever happens to be running now."""
+    store.record_generation(
+        conversation_id="c1", agent_id="gardener", model="m",
+        latency_ms=10, text="x", transcript_len=1,
+    )
+    with store.connect() as conn:
+        row = conn.execute("SELECT build FROM generations").fetchone()
+    assert row["build"] is None
+
+
+def test_migration_onto_a_pre_build_database_is_safe():
+    """A database created before the `build` column existed must gain it
+    without losing the rows already in it — the same guarantee the `text`
+    column migration already gives, exercised the same way.
+
+    The autouse fixture already ran init_db() once on this file with the
+    current schema, so the pre-migration shape has to be forced back in
+    (drop, then recreate without `text` or `build`) before re-running the
+    migration is a real test of anything.
+    """
+    with store.connect() as conn:
+        conn.executescript(
+            """
+            DROP TABLE generations;
+            CREATE TABLE generations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT, agent_id TEXT NOT NULL, model TEXT NOT NULL,
+                latency_ms INTEGER NOT NULL, char_count INTEGER NOT NULL,
+                word_count INTEGER NOT NULL, transcript_len INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """INSERT INTO generations
+               (conversation_id, agent_id, model, latency_ms, char_count,
+                word_count, transcript_len, created_at)
+               VALUES ('old', 'gardener', 'm', 1, 1, 1, 1, 0)"""
+        )
+
+    store.init_db()  # migration must be idempotent AND additive
+
+    with store.connect() as conn:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(generations)")}
+        row = conn.execute("SELECT * FROM generations").fetchone()
+    assert "build" in cols
+    assert row["conversation_id"] == "old", "pre-existing row was lost"
+    assert row["build"] is None

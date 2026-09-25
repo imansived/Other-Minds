@@ -65,7 +65,7 @@ def generations_frame() -> pd.DataFrame:
     """Telemetry for every generated turn, including ones never saved."""
     with connect() as conn:
         return pd.read_sql_query(
-            """SELECT agent_id AS agent, model, latency_ms, char_count,
+            """SELECT agent_id AS agent, model, build, latency_ms, char_count,
                       word_count, transcript_len, created_at
                  FROM generations""",
             conn,
@@ -344,8 +344,15 @@ def divergence_report() -> dict:
     }
 
 
-def print_report() -> None:
-    """Human-readable version, for `python -m app.analytics`."""
+def print_report(build: str | None = None) -> None:
+    """Human-readable version, for `python -m app.analytics`.
+
+    `build` narrows chat-feel to one prompt revision — see app/build.py and
+    the `build` column on `generations`. The divergence numbers above it are
+    left unfiltered on purpose: which words separate the three agents is a
+    much slower-moving property than turn shape, and narrowing it too would
+    just shrink the sample for no real gain.
+    """
     r = divergence_report()
     if not r["available"]:
         print(r["reason"])
@@ -395,10 +402,10 @@ def print_report() -> None:
         print(f"\nlatency: median {lat['overall_median_ms']}ms "
               f"over {lat['total_generations']} generations")
 
-    print_chat_feel()
+    print_chat_feel(build=build)
 
 
-def print_chat_feel(model: str | None = None) -> None:
+def print_chat_feel(model: str | None = None, build: str | None = None) -> None:
     """The other half of the report, and the half that was missing.
 
     Every divergence metric can read green while each turn is a 150-word essay
@@ -412,8 +419,9 @@ def print_chat_feel(model: str | None = None) -> None:
     in is how a corpus seeded on one model came to stand in for another.
     """
     model = model or settings.model
-    f = chat_feel_report(model)
-    print(f"\nchat feel  [{model}]")
+    f = chat_feel_report(model, build)
+    label = f"[{model}]" if not build else f"[{model} @ {build}]"
+    print(f"\nchat feel  {label}")
     if not f.get("available"):
         print(f"  {f.get('reason', 'unavailable')}")
         return
@@ -460,12 +468,17 @@ SHORT_TURN_WORDS = 15
 # Over this, it is an essay.
 LONG_TURN_WORDS = 100
 
-def generated_turns(model: str | None = None) -> pd.DataFrame:
-    """Every generated turn whose text was recorded, newest last."""
+def generated_turns(model: str | None = None, build: str | None = None) -> pd.DataFrame:
+    """Every generated turn whose text was recorded, newest last.
+
+    `build` filters to one prompt revision (app/build.py). Rows recorded
+    before the `build` column existed carry NULL and are excluded by any
+    filter rather than silently guessed into either bucket.
+    """
     with connect() as conn:
         df = pd.read_sql_query(
-            """SELECT id, conversation_id, agent_id AS agent, model, word_count,
-                      transcript_len, created_at, text
+            """SELECT id, conversation_id, agent_id AS agent, model, build,
+                      word_count, transcript_len, created_at, text
                  FROM generations
                 WHERE text IS NOT NULL
                 ORDER BY created_at""",
@@ -473,8 +486,29 @@ def generated_turns(model: str | None = None) -> pd.DataFrame:
         )
     if model and not df.empty:
         df = df[df["model"] == model]
+    if build and not df.empty:
+        df = df[df["build"] == build]
     return df
 
+
+
+def available_builds() -> list[dict]:
+    """Every build fingerprint seen in the corpus, most recent first.
+
+    Exists so `--build` has something to be pointed at without opening a
+    database client. A row recorded before the `build` column existed shows
+    up under the label "unknown" rather than being silently dropped — the
+    gap in the record is itself worth seeing.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT COALESCE(build, 'unknown') AS build,
+                      COUNT(*) AS turns, MAX(created_at) AS last_seen
+                 FROM generations
+                GROUP BY COALESCE(build, 'unknown')
+                ORDER BY last_seen DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def first_sentence(text: str) -> str:
@@ -725,9 +759,9 @@ def chat_feel(turns: pd.DataFrame) -> dict:
     }
 
 
-def chat_feel_report(model: str | None = None) -> dict:
+def chat_feel_report(model: str | None = None, build: str | None = None) -> dict:
     """chat_feel plus a per-agent breakdown."""
-    turns = generated_turns(model)
+    turns = generated_turns(model, build)
     overall = chat_feel(turns)
     if not overall["available"]:
         return overall

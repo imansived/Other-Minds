@@ -160,6 +160,11 @@ async def agent_turn(body: TurnRequest) -> JSONResponse:
             latency_ms=int((time.perf_counter() - started) * 1000),
             text=text,
             transcript_len=len(body.transcript),
+            # So a stored turn can be attributed to the prompt revision that
+            # produced it — see app/build.py and the `build` column comment
+            # in store.py. Without this every prompt version pools into one
+            # number and "did the change work" needs fresh API calls to answer.
+            build=BUILD,
         )
     except Exception:
         log.exception("Failed to record generation telemetry")

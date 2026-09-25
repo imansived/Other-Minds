@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import store  # noqa: E402
 from app.agents.registry import get_agent  # noqa: E402
+from app.build import BUILD  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.llm import RateLimited, generate_turn  # noqa: E402
 from app.orchestrator import last_agent_speaker, pick_next_speaker  # noqa: E402
@@ -158,6 +159,10 @@ async def seed_one(index: int, question: str, turns: int, pacer: Pacer) -> int:
             latency_ms=int((time.perf_counter() - started) * 1000),
             text=text,
             transcript_len=len(transcript) - 1,
+            # Without this a seeded turn is indistinguishable in the corpus
+            # from one served by a different prompt revision entirely — see
+            # app/build.py and the `build` column comment on `generations`.
+            build=BUILD,
         )
         print(f"  {agent_id:13s} {len(text):5d} chars  {text[:64]!r}", flush=True)
 
