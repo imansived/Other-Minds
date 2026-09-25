@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GLOBALS_CSS = (ROOT / "app" / "globals.css").read_text(encoding="utf-8")
 LAYOUT_TSX = (ROOT / "app" / "layout.tsx").read_text(encoding="utf-8")
 PAGE_TSX = (ROOT / "app" / "page.tsx").read_text(encoding="utf-8")
+SIDEBAR_TSX = (ROOT / "app" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
 
 
 def test_theme_color_matches_the_room():
@@ -90,3 +91,52 @@ def test_hear_another_mind_still_exists():
     assert "hear another mind" in PAGE_TSX
     # ...and it must ask for a DIFFERENT mind, which is what the button says.
     assert "runTurn(transcript, false)" in PAGE_TSX
+
+
+def test_send_button_hits_the_touch_target_guideline():
+    """Found by an actual headless-Chromium check at an iPhone-width viewport,
+    not by reading the CSS: `.icon-btn` was correctly bumped to 44px under
+    `(pointer: coarse)`, but `.send` — the composer's primary action — was left
+    at 42px right below it. Every source-grep check in this file would have
+    passed; only measuring the real rendered box caught the 2px gap.
+    """
+    block = re.search(
+        r"@media \(pointer: coarse\) \{.*?\.send \{([^}]*)\}",
+        GLOBALS_CSS,
+        re.S,
+    )
+    assert block, "the coarse-pointer .send rule is gone"
+    width = re.search(r"width:\s*(\d+)px", block.group(1))
+    height = re.search(r"height:\s*(\d+)px", block.group(1))
+    assert width and int(width.group(1)) >= 44, ".send width dropped below 44px"
+    assert height and int(height.group(1)) >= 44, ".send height dropped below 44px"
+
+
+def test_sidebar_hidden_state_accounts_for_the_mobile_viewport():
+    """`aria-hidden={collapsed && !mobileOpen}` looked right and passed every
+    prior test, because it happens to be correct on desktop, where `mobileOpen`
+    never turns true. On an actual phone it was wrong for the "closed" half of
+    the cycle, INCLUDING first render — collapsed and mobileOpen both start
+    false, and the sidebar is in fact off-screen there the whole time via
+    `transform: translateX(-100%)`. A headless-Chromium check caught it by
+    literally calling `.focus()` on a button inside the visually-hidden
+    sidebar and watching it succeed. Grepping source cannot catch a bug that is
+    about which STATE means "shown" disagreeing between CSS and JS; this can
+    only pin the shape of the actual fix.
+    """
+    assert "matchMedia" in SIDEBAR_TSX, (
+        "the sidebar lost its real viewport check and is back to guessing "
+        "visibility from `collapsed` alone"
+    )
+    # The bug, precisely: these two attributes driven straight off the
+    # desktop-only formula. A mention of that formula in an explanatory
+    # comment is fine and expected; it must not be what aria-hidden/inert
+    # actually evaluate.
+    assert not re.search(r"aria-hidden=\{collapsed && !mobileOpen\}", SIDEBAR_TSX), (
+        "aria-hidden is back to the desktop-only formula — this is the exact regression"
+    )
+    assert not re.search(r"inert=\{collapsed && !mobileOpen\}", SIDEBAR_TSX), (
+        "inert is back to the desktop-only formula — this is the exact regression"
+    )
+    assert re.search(r"aria-hidden=\{hidden\}", SIDEBAR_TSX)
+    assert re.search(r"inert=\{hidden\}", SIDEBAR_TSX)

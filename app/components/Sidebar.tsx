@@ -1,6 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { relativeTime, type Conversation } from "@/app/lib/history";
+
+// Mirrors the `@media (max-width: 720px)` breakpoint in globals.css where the
+// sidebar switches from "collapses to zero width in place" to "fixed overlay
+// driven by mobileOpen". Nothing enforces these two 720s staying in sync; if
+// the CSS breakpoint ever moves, this has to move with it.
+const MOBILE_BREAKPOINT = "(max-width: 720px)";
 
 /**
  * Local conversation history. Most-recent-first, hover to reveal delete.
@@ -27,19 +34,42 @@ export default function Sidebar({
   onDelete: (id: string) => void;
   onNew: () => void;
 }) {
+  // Which rule actually governs visibility right now. `collapsed` and
+  // `mobileOpen` are toggled together by the same button (see toggleNav in
+  // page.tsx), which made "hidden = collapsed && !mobileOpen" look right in
+  // testing — it happens to hold on desktop, where mobileOpen never turns
+  // true. On an actual phone it is wrong for exactly the "closed" half of
+  // the cycle, INCLUDING the very first render: collapsed and mobileOpen
+  // both start false, the desktop formula reads that as "visible", and the
+  // sidebar is in fact off-screen the whole time via `transform:
+  // translateX(-100%)`. A headless-Chromium check at a real phone viewport
+  // caught this — it is not visible from reading the CSS or the JSX alone,
+  // because the bug is in how the two disagree about which state means shown.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_BREAKPOINT);
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const hidden = isMobile ? !mobileOpen : collapsed;
+
   return (
     <aside
       className={`sidebar${collapsed ? " collapsed" : ""}${mobileOpen ? " mobile-open" : ""}`}
       aria-label="Conversation history"
-      /* Collapsed means width 0 with overflow hidden, so the panel is invisible
-         but its buttons stayed in the tab order — aria-hidden alone produced
-         the classic trap where tabbing lands you on a control you cannot see
-         and a screen reader refuses to name. `inert` removes the whole subtree
-         from focus and from the a11y tree together; React 19 takes it as a
-         boolean prop. Keep both: aria-hidden for assistive tech on the older
-         path, inert for focus. */
-      aria-hidden={collapsed && !mobileOpen}
-      inert={collapsed && !mobileOpen}
+      /* The panel can be invisible (collapsed to zero width in place on
+         desktop, or off-screen via transform on mobile — `hidden` above
+         picks the rule that actually applies) while its buttons stay in the
+         tab order — aria-hidden alone produces the classic trap where
+         tabbing lands you on a control you cannot see and a screen reader
+         refuses to name. `inert` removes the whole subtree from focus and
+         from the a11y tree together; React 19 takes it as a boolean prop.
+         Keep both: aria-hidden for assistive tech on the older path, inert
+         for focus. */
+      aria-hidden={hidden}
+      inert={hidden}
     >
       <div className="sidebar-inner">
         <div className="sidebar-head">

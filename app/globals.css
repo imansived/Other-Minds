@@ -1124,9 +1124,18 @@ body {
   font-family: var(--ui);
   font-size: 0.88rem;
   line-height: 1.55;
-  padding: 13px 0 7px;
-  /* The starting height. JS takes over on the first paint. */
-  height: 41px;
+  /* Centred against the round buttons beside it, which sit on the row's full
+     height and are what the eye actually checks the text against. Symmetric
+     padding is what lands it there: JS sizes the box to scrollHeight, so the
+     content box comes out exactly one line tall and the line box falls dead
+     centre. Measured off a 3x screenshot of the real pill — the ink lands
+     within half a pixel of the button's centre, where the old 11.5/8.5 split
+     sat 1.5-2px low. Any asymmetry shifts the text by exactly (top-bottom)/2,
+     so keep these equal. */
+  padding: 10px 0;
+  /* The starting height, matching what JS measures on the first paint, so the
+     box doesn't resize under the cursor. */
+  height: 42px;
   max-height: 168px;
   /* A stray blank line at the foot of a pasted paragraph shouldn't reserve
      a whole extra row of the box on some platforms. */
@@ -1232,8 +1241,14 @@ body {
     height: 40px;
   }
   .send {
-    width: 42px;
-    height: 42px;
+    /* Was 42px — a real-device check (headless Chromium at an iPhone-width
+       viewport) measured it and flagged the miss; the icon-btn rule right
+       above it was already correctly at 44 and this one was not. It is the
+       primary action in the composer — send, or advance the conversation —
+       so it gets the full guideline rather than the smaller size given to
+       the deliberately-quiet mute and delete controls below. */
+    width: 44px;
+    height: 44px;
   }
   .history-delete {
     width: 38px;
