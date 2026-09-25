@@ -27,7 +27,7 @@ from sklearn.pipeline import make_pipeline
 
 from app.agents.registry import AGENT_IDS
 from app.config import settings
-from app.epistemics import mind_reading_share
+from app.epistemics import mind_reading_share, personalises_share, prescribes_share
 from app.store import connect
 
 # Below this, the numbers are noise dressed up as findings.
@@ -426,6 +426,8 @@ def print_chat_feel(model: str | None = None) -> None:
           f"   reactions (<{f['thresholds']['short_under']}w) {f['short_share']:.0%}")
     print(f"  ends on a quotable verdict  {f['verdict_closer_share']:.0%}")
     print(f"  mind-reads without owning   {f['unmarked_mind_reading_share']:.0%}")
+    print(f"  personalises the question   {f['personalises_question_share']:.0%}")
+    print(f"  lens hardens into an order  {f['prescribes_share']:.0%}")
     opener = f["opens_on_another_share"]
     print(f"  opens by restating a mind   "
           f"{'n/a' if opener is None else format(opener, '.0%')}")
@@ -702,6 +704,17 @@ def chat_feel(turns: pd.DataFrame) -> dict:
         # epistemic marking rather than banned phrases.
         "unmarked_mind_reading_share": round(
             mind_reading_share(turns["text"].tolist()), 3
+        ),
+        # Rule 1 (an abstract question is a real question) and Rule 2 (a
+        # lens, not an instruction). Both shipped with prompt changes and unit
+        # tests but no standing measurement until now — these are the first
+        # time either has a number attached to it in the actual corpus rather
+        # than a one-off scenario run.
+        "personalises_question_share": round(
+            personalises_share(turns["text"].tolist()), 3
+        ),
+        "prescribes_share": round(
+            prescribes_share(turns["text"].tolist()), 3
         ),
         "opens_on_another_share": _opener_share(turns),
         "addresses_another_agent_share": round(float(names_other.mean()), 3),

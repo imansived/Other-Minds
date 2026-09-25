@@ -122,6 +122,24 @@ def test_ordinary_speech_is_not_flagged():
         assert unmarked_mind_reading(line) == [], f"false positive: {line!r}"
 
 
+def test_the_recommended_hedge_forms_actually_count_as_hedges():
+    """The house style names specific structural forms. The detector has to
+    accept them, or it penalises the exact phrasing the prompt asks for.
+
+    "That makes me wonder…" was scored as an unowned assertion, because the
+    marker was anchored to "i wonder".
+    """
+    for line in [
+        "That makes me wonder whether you already know what you want.",
+        "One reading is that what you really want is permission to stop.",
+        "It leaves me wondering if deep down you have already decided.",
+    ]:
+        assert unmarked_mind_reading(line) == [], f"recommended form flagged: {line!r}"
+
+    # ...without clearing an assertion that merely contains the word.
+    assert unmarked_mind_reading("No wonder you already know you want to leave.")
+
+
 def test_curly_apostrophes_are_not_an_escape_hatch():
     """Gemini writes ’ and the patterns are spelled with '.
 
