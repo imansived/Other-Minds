@@ -129,6 +129,39 @@ def test_next_speaker_needs_a_non_empty_transcript(client):
     assert client.post("/agent/next-speaker", json={"transcript": []}).status_code == 422
 
 
+def test_naming_a_mind_elects_it_over_the_route(client):
+    """The unit test covers the rule; this covers the contract both UIs call.
+
+    The endpoint is where a client actually asks, so a regression that only
+    showed up after serialisation would be invisible to the orchestrator tests.
+    """
+    for text, expected in [
+        ("Introspector, what do you think?", "introspector"),
+        ("gardener what about the kids", "gardener"),
+        ("I want the Behaviorist take on this", "behaviorist"),
+    ]:
+        picked = set()
+        for _ in range(20):
+            res = client.post(
+                "/agent/next-speaker",
+                json={"transcript": [{"role": "user", "content": text}]},
+            )
+            assert res.status_code == 200
+            picked.add(res.json()["agentId"])
+        assert picked == {expected}, f"{text!r} elected {picked}"
+
+
+def test_an_unnamed_question_still_draws_from_all_three(client):
+    picked = set()
+    for _ in range(60):
+        res = client.post(
+            "/agent/next-speaker",
+            json={"transcript": [{"role": "user", "content": "What is freedom?"}]},
+        )
+        picked.add(res.json()["agentId"])
+    assert picked == {"introspector", "behaviorist", "gardener"}
+
+
 # ── Provider failures must never escape as plain text ───────────────────────
 #
 # FastAPI answers an unhandled exception with the PLAIN TEXT "Internal Server

@@ -24,7 +24,7 @@ from app.llm import (
     UpstreamRefused,
     generate_turn,
 )
-from app.orchestrator import last_agent_speaker, pick_next_speaker
+from app.orchestrator import choose_speaker
 from app import store
 from app.schemas import (
     ConversationDetail,
@@ -90,10 +90,10 @@ async def next_speaker(body: NextSpeakerRequest) -> JSONResponse:
     is still being written, without the client owning the turn rule. Clients
     should pass the returned id straight back to /agent/turn as `agentId`; a
     client that skips this and omits `agentId` just gets an independent draw.
+
+    Naming a mind in the message elects that mind — see orchestrator.summoned.
     """
-    picked = pick_next_speaker(
-        last_agent_speaker(body.transcript), allow_same=body.allow_same_speaker
-    )
+    picked = choose_speaker(body.transcript, allow_same=body.allow_same_speaker)
     return JSONResponse({"agentId": picked})
 
 
@@ -109,8 +109,8 @@ async def agent_turn(body: TurnRequest) -> JSONResponse:
     With `agentId` omitted the server picks the next speaker, so the client no
     longer controls turn order.
     """
-    agent_id = body.agent_id or pick_next_speaker(
-        last_agent_speaker(body.transcript), allow_same=body.allow_same_speaker
+    agent_id = body.agent_id or choose_speaker(
+        body.transcript, allow_same=body.allow_same_speaker
     )
     agent = get_agent(agent_id)
     if agent is None:
