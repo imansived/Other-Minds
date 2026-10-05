@@ -10,10 +10,26 @@ the order themselves.
 """
 
 import random
+import re
 
-from app.agents.registry import AGENT_IDS
+from app.agents.registry import AGENT_IDS, AGENT_NAMES
 from app.config import settings
 from app.schemas import AgentId, ChatMessage
+
+# How a person names the mind they want to hear from. Both the display name and
+# the bare word, because "introspector, what do you think?" is typed at least as
+# often as "The Introspector" — and an optional "the" in front of either.
+#
+# The bare word does mean "my gardener quit last week" summons The Gardener.
+# That is accepted deliberately: the cost is one mind answering a message it was
+# going to be eligible for anyway, against the cost of missing the lowercase
+# summons, which is the common form and the whole point of the feature.
+_SUMMONS: dict[AgentId, re.Pattern[str]] = {
+    agent_id: re.compile(
+        rf"\b(?:the\s+)?{re.escape(name.removeprefix('The '))}\b", re.I
+    )
+    for agent_id, name in AGENT_NAMES.items()
+}
 
 
 def last_agent_speaker(transcript: list[ChatMessage]) -> AgentId | None:
@@ -22,6 +38,47 @@ def last_agent_speaker(transcript: list[ChatMessage]) -> AgentId | None:
         if m.role != "user":
             return m.role  # type: ignore[return-value]
     return None
+
+
+def summoned(transcript: list[ChatMessage]) -> AgentId | None:
+    """The mind the person asked for by name, or None if they asked for no one.
+
+    Only the final message counts, and only when the person is the one who just
+    spoke. Once a mind has answered, the summons has been served — otherwise
+    "hear another mind" would keep re-electing the same one forever, because the
+    name is still sitting there in the transcript.
+
+    Exactly one name summons. Naming two is a topic, not a request ("I think the
+    Gardener and the Behaviorist are both missing something"), so the ordinary
+    draw handles it rather than picking one of them arbitrarily.
+    """
+    if not transcript:
+        return None
+    last = transcript[-1]
+    if last.role != "user":
+        return None
+    named = [a for a, pattern in _SUMMONS.items() if pattern.search(last.content)]
+    return named[0] if len(named) == 1 else None
+
+
+def choose_speaker(
+    transcript: list[ChatMessage],
+    *,
+    allow_same: bool = True,
+    rng: random.Random | None = None,
+) -> AgentId:
+    """Who speaks next: the mind asked for by name, otherwise the weighted draw.
+
+    This is the entry point every client should use. Asking for a mind by name
+    and getting a different one is the flaw it exists to close — the room was
+    ignoring the one thing the person said unambiguously.
+
+    A summons beats `allow_same`: naming a mind that just spoke is a request for
+    more from that mind, not a mistake to correct.
+    """
+    return summoned(transcript) or pick_next_speaker(
+        last_agent_speaker(transcript), allow_same=allow_same, rng=rng
+    )
 
 
 def pick_next_speaker(

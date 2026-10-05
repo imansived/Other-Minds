@@ -74,8 +74,9 @@ Interactive API docs run at <http://127.0.0.1:8000/docs>.
 These mirror the original TypeScript implementation exactly, and the reasons are
 in `config.py`:
 
-- `max_output_tokens=500` — a backstop against a runaway turn, not a length
-  control. The prompts deliberately allow one word to a full paragraph.
+- `max_output_tokens=300` — both a backstop and a real brake on length. At 500
+  the ceiling never bit and instruction alone did not hold turns short; 300
+  makes a rambling turn impossible while leaving room for an earned paragraph.
 - `thinking_budget=0` — Gemini Flash thinks by default and thinking tokens count
   against the output budget. Disabled so the whole budget is reply.
 

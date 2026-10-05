@@ -1,8 +1,26 @@
 """Agent definitions.
 
-The system prompts are the product. They live as .md files next to this module
-and were extracted verbatim from app/lib/agents.ts — byte-for-byte, verified as
-exact substrings of the original. Edit the .md files, never a copy.
+The system prompts are the product. They live as .md files next to this module.
+
+A prompt is assembled from two pieces, and the split is the point:
+
+  <agent>.md   the LENS — worldview, what this mind notices, what it accepts as
+               evidence, what it values, its blind spot, what it may never
+               assume, and its own voice. Everything that makes it this mind
+               rather than one of the others.
+
+  _house.md    the HOUSE STYLE — how a turn is shaped, hypothesis vs fact,
+               questions, challenging another mind, safety. Everything that is
+               true of all three.
+
+They used to be one file each, which meant the house rules existed in triplicate
+and every edit had to be made three times or silently drift. It also made each
+prompt long enough that the model started dropping rules: fixing one behaviour
+reliably broke another that had been holding. One copy, loaded once, is both the
+maintenance fix and the reason each mind's own section is now short enough to
+carry weight.
+
+Adding a fourth mind is now a lens file plus an entry in AGENT_NAMES.
 """
 
 from dataclasses import dataclass
@@ -34,9 +52,37 @@ class AgentConfig:
     system_prompt: str
 
 
+HOUSE_PATH = PROMPT_DIR / "_house.md"
+
+# Filled in from AGENT_NAMES rather than written out in the prose, so a fourth
+# mind does not leave three prompts quietly claiming there are three.
+ALL_NAMES_TOKEN = "__ALL_NAMES__"
+
+
+def _join_names(names: list[str]) -> str:
+    """"A, B and C" — Oxford-less, which is how the prompts already read."""
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def compose_prompt(agent_id: AgentId, lens: str, house: str) -> str:
+    """Lens first, then the house style.
+
+    Order matters: the lens is what distinguishes this mind, and putting it
+    first means the model reads who it is before it reads how everyone behaves.
+    """
+    filled = house.replace(ALL_NAMES_TOKEN, _join_names(list(AGENT_NAMES.values())))
+    return f"{lens.rstrip()}\n\n{filled.lstrip()}"
+
+
 @lru_cache(maxsize=1)
 def agents() -> dict[AgentId, AgentConfig]:
     """Load and cache the agent registry, prompts included."""
+    if not HOUSE_PATH.is_file():
+        raise FileNotFoundError(f"Missing shared house-style prompt: {HOUSE_PATH}")
+    house = HOUSE_PATH.read_text(encoding="utf-8")
+
     registry: dict[AgentId, AgentConfig] = {}
     for agent_id in AGENT_IDS:
         path = PROMPT_DIR / f"{agent_id}.md"
@@ -45,7 +91,9 @@ def agents() -> dict[AgentId, AgentConfig]:
         registry[agent_id] = AgentConfig(
             id=agent_id,
             name=AGENT_NAMES[agent_id],
-            system_prompt=path.read_text(encoding="utf-8"),
+            system_prompt=compose_prompt(
+                agent_id, path.read_text(encoding="utf-8"), house
+            ),
         )
     return registry
 

@@ -7,6 +7,28 @@
  * byte-identical markup (a random layout here would trip a hydration
  * mismatch).
  *
+ * ── Why the sky is described rather than decided here ──────────────────────
+ * The same field that reads as atmosphere on a wide screen reads as a busy
+ * one on a phone: the stars aren't closer together, but the viewport is
+ * smaller, so more of them land near what you are trying to read.
+ *
+ * The fix can't be "generate fewer stars when narrow" — the markup is rendered
+ * on the server, which has no viewport, and branching on window width here
+ * would mean a hydration mismatch or a field that pops after first paint.
+ *
+ * So this file only ever *describes* each star, and CSS decides what to do
+ * with the description. Every star carries its brightness and its animation
+ * timings as custom properties rather than as finished values, plus three
+ * facts about itself:
+ *
+ *   star-thin  every third star, so a media query can thin the field
+ *   star-mid   sits behind the column where the text lives
+ *   star-keep  one of the bright few, and not behind the text
+ *
+ * Desktop reads none of those classes and multiplies every timing by 1, so
+ * what it renders is byte-identical to before. The phone rules live in one
+ * block in globals.css.
+ *
  * All motion is switched off under `prefers-reduced-motion` in globals.css —
  * the scene stays, it just stops moving.
  */
@@ -46,6 +68,18 @@ const LAYERS: LayerSpec[] = [
   { seed: 4242, count: 26, size: 2.4, opacity: 0.82, twinkle: 0.78, float: 0.85, drift: "c" },
 ];
 
+/**
+ * Where the reading column falls, in a star layer's own coordinates.
+ *
+ * A layer is oversized and offset — top/left -12%, 124% square — so its drift
+ * never shows an edge. That means a star at layer position L sits at viewport
+ * position `-12 + 1.24 * L`. Inverting that for the viewport box the text
+ * occupies on a phone (x 4→96%, y 10→88%) gives the numbers below. Stars
+ * inside it are the ones a phone dims; the brighter few are chosen from what's
+ * left, so nothing bright ever sits behind a line of type.
+ */
+const READING_BAND = { x0: 12.9, x1: 87.1, y0: 17.7, y1: 80.6 };
+
 function Layer({ spec, index }: { spec: LayerSpec; index: number }) {
   const rand = seeded(spec.seed);
   const stars = Array.from({ length: spec.count }, () => {
@@ -83,24 +117,65 @@ function Layer({ spec, index }: { spec: LayerSpec; index: number }) {
           delays.push(`${s.floatDelay}s`);
         }
 
+        const vars = (style: CSSProperties) =>
+          style as Record<string, string | number>;
+
         const style: CSSProperties = {
           top: `${s.top}%`,
           left: `${s.left}%`,
           width: spec.size,
           height: spec.size,
-          opacity: s.dim,
         };
+        // Brightness and durations are handed over as raw ingredients — CSS
+        // scales them by one factor per viewport. On desktop that factor is 1.
+        vars(style)["--star-o"] = s.dim;
         if (names.length) {
           style.animationName = names.join(", ");
-          style.animationDuration = durations.join(", ");
           style.animationDelay = delays.join(", ");
+          vars(style)["--a1"] = durations[0];
+          if (durations[1]) vars(style)["--a2"] = durations[1];
         }
         if (s.floats) {
-          (style as Record<string, string | number>)["--fx"] = `${s.fx}px`;
-          (style as Record<string, string | number>)["--fy"] = `${s.fy}px`;
+          vars(style)["--fx"] = `${s.fx}px`;
+          vars(style)["--fy"] = `${s.fy}px`;
         }
 
-        return <span key={`${index}-${i}`} className="star" style={style} />;
+        // Behind the text, and bright enough to notice, are the two things a
+        // narrow screen has to care about. Both are read off values already
+        // drawn — no extra calls into the PRNG, so the field itself is
+        // unchanged.
+        const mid =
+          s.left > READING_BAND.x0 &&
+          s.left < READING_BAND.x1 &&
+          s.top > READING_BAND.y0 &&
+          s.top < READING_BAND.y1;
+        // Drawn from the two nearest layers, which are the ones carrying enough
+        // layer opacity to read as bright at all. A star only counts as one of
+        // the bright few if it is also clear of the text — and on a phone the
+        // text covers roughly seven tenths of the screen, so the thresholds
+        // have to be generous or the handful comes out as one or two. `dim` is
+        // doing duty as the lottery here rather than as a brightness: a phone
+        // lights these from --sky-star-o, not from the value they drew.
+        const bright =
+          (spec.drift === "c" && s.dim > 0.62) ||
+          (spec.drift === "b" && s.dim > 0.82);
+        const keep = bright && !mid;
+
+        const marks = [
+          // Thinning skips the bright few — otherwise the handful meant to
+          // survive is exactly the handful at risk of being deleted.
+          i % 3 === 0 && !keep ? "star-thin" : "",
+          mid ? "star-mid" : "",
+          keep ? "star-keep" : "",
+        ].filter(Boolean);
+
+        return (
+          <span
+            key={`${index}-${i}`}
+            className={["star", ...marks].join(" ")}
+            style={style}
+          />
+        );
       })}
     </div>
   );

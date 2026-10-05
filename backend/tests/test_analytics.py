@@ -251,16 +251,16 @@ def test_masked_separability_is_included_in_the_report():
 # perfectly distinguishable from each other and still all write essays.
 
 
-def gen(agent, text, conversation="c1", model="test-model", at=None):
+def gen(agent, text, conversation="c1", model="test-model", at=None, build=None):
     """Write one generation row directly — this metric reads generations."""
     from app.store import connect, _now_ms
     with connect() as conn:
         conn.execute(
             """INSERT INTO generations (conversation_id, agent_id, model, latency_ms,
-                   char_count, word_count, transcript_len, created_at, text)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                   char_count, word_count, transcript_len, created_at, text, build)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (conversation, agent, model, 100, len(text), len(text.split()),
-             0, at or _now_ms(), text),
+             0, at or _now_ms(), text, build),
         )
 
 
@@ -331,6 +331,52 @@ def test_model_filter_selects_a_single_corpus():
     gen("gardener", words(200), conversation="b", model="lite")
     assert analytics.chat_feel(analytics.generated_turns("flash"))["turns"] == 1
     assert analytics.chat_feel(analytics.generated_turns("lite"))["mean_words"] == 200
+
+
+def test_build_filter_selects_a_single_prompt_revision():
+    """Without this, a change to the prompts can only be checked by spending
+    fresh API quota — the stored turns from before and after the edit are
+    indistinguishable. See app/build.py."""
+    gen("gardener", words(20), conversation="a", build="rev-old")
+    gen("gardener", words(200), conversation="b", build="rev-new")
+    assert analytics.chat_feel(analytics.generated_turns(build="rev-old"))["turns"] == 1
+    assert (
+        analytics.chat_feel(analytics.generated_turns(build="rev-new"))["mean_words"]
+        == 200
+    )
+
+
+def test_rows_from_before_the_build_column_are_excluded_by_a_filter():
+    """A row with no recorded build is honestly unattributable. Folding it into
+    whichever revision is being inspected would be a silent guess, and the
+    guess is very likely to be wrong."""
+    gen("gardener", words(20), conversation="a", build=None)
+    gen("gardener", words(200), conversation="b", build="rev-new")
+    assert analytics.chat_feel(analytics.generated_turns(build="rev-new"))["turns"] == 1
+    assert analytics.chat_feel(analytics.generated_turns())["turns"] == 2
+
+
+def test_available_builds_lists_every_revision_seen():
+    gen("gardener", words(10), conversation="a", build="rev-1")
+    gen("gardener", words(10), conversation="b", build="rev-1")
+    gen("gardener", words(10), conversation="c", build="rev-2")
+    gen("gardener", words(10), conversation="d", build=None)
+
+    rows = {r["build"]: r["turns"] for r in analytics.available_builds()}
+    assert rows == {"rev-1": 2, "rev-2": 1, "unknown": 1}
+
+
+def test_chat_feel_reports_the_two_rules_added_after_the_launch_audit():
+    """Rule 1 (an abstract question is a real question) and Rule 2 (a lens, not
+    an instruction) shipped with prompt changes and their own unit tests, but
+    no standing measurement — nothing in app/ called either detector outside a
+    test or a scratch script. This is the first time either has a number
+    attached to it in the stored corpus."""
+    gen("introspector", "When people ask that they are usually carrying something.")
+    gen("behaviorist", "Tell them no and that is the only way you will find out.")
+    r = analytics.chat_feel(analytics.generated_turns())
+    assert r["personalises_question_share"] == 0.5
+    assert r["prescribes_share"] == 0.5
 
 
 def test_echo_detects_engagement_that_naming_misses():

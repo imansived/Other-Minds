@@ -193,19 +193,28 @@ body {
   position: absolute;
   border-radius: 50%;
   background: #f2efe8;
-  /* Names, durations and delays are set per star inline; a star can carry
-     both the twinkle and the float at once. */
+  /* Names and delays are set per star inline; a star can carry both the
+     twinkle and the float at once. Brightness and duration are not set there
+     — the star supplies them as --star-o and --a1/--a2, and these two lines
+     scale them by one factor for the whole sky. Both factors are 1 unless a
+     media query says otherwise, so this computes to what it always did. */
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
+  opacity: calc(var(--star-o, 1) * var(--sky-star-o, 1));
+  animation-duration:
+    calc(var(--a1, 0s) * var(--sky-speed, 1)),
+    calc(var(--a2, 0s) * var(--sky-speed, 1));
 }
 
+/* The two ends of a twinkle are variables, so a screen can lower the ceiling
+   without touching the floor. 0.18 → 1 is the sky as it was. */
 @keyframes twinkle {
   0%,
   100% {
-    opacity: 0.18;
+    opacity: var(--tw-lo, 0.18);
   }
   50% {
-    opacity: 1;
+    opacity: var(--tw-hi, 1);
   }
 }
 /* A slow wander of a few pixels, per star, so the field never looks pinned. */
@@ -276,6 +285,55 @@ body {
   }
   100% {
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ── The same sky, on a phone ──────────────────────────────────────────────
+   None of this removes the stars. A narrow viewport doesn't move them closer
+   together, it just leaves less room between them and what you are reading,
+   and the result is a field that asks to be watched rather than one you
+   notice. Four adjustments, and the desktop sky reads none of them:
+
+     fewer      every third star is dropped — about 100 left of 150
+     dimmer     the whole field down to 0.62, and a twinkle now peaks at 0.5
+                instead of going all the way to white
+     calmer     twinkle and float take three times as long; the layer drift
+                roughly doubles, so nothing completes a move while you look
+     clear      stars behind the reading column are dimmed furthest, and the
+                bright handful are chosen only from those outside it
+
+   The last one is the one that matters: what makes a star distracting is not
+   that it is bright, it is that it is bright behind a sentence. */
+@media (max-width: 720px) {
+  .galaxy {
+    --sky-star-o: 0.62;
+    --sky-speed: 3;
+    --tw-lo: 0.1;
+    --tw-hi: 0.5;
+  }
+  /* Every third star, by index. Position is random, so index has nothing to
+     do with where a star is — the field thins evenly rather than in patches. */
+  .star-thin {
+    display: none;
+  }
+  /* Behind the text. Present, but never competing with a line of type. */
+  .star-mid {
+    --sky-star-o: 0.5;
+    --tw-hi: 0.34;
+  }
+  /* The handful that stay bright, all of them outside the reading column. */
+  .star-keep {
+    --sky-star-o: 0.95;
+    --tw-hi: 0.85;
+  }
+  .drift-a {
+    animation-duration: 190s;
+  }
+  .drift-b {
+    animation-duration: 126s;
+  }
+  .drift-c {
+    animation-duration: 84s;
   }
 }
 
@@ -694,7 +752,7 @@ body {
   margin: 12px 0 0;
   text-align: center;
   font-size: 0.72rem;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted) 66%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1019,7 +1077,7 @@ body {
   text-align: center;
   font-size: 0.66rem;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  color: color-mix(in srgb, var(--muted) 58%, transparent);
   animation: settle-in 0.6s ease-out both;
 }
 
@@ -1066,9 +1124,18 @@ body {
   font-family: var(--ui);
   font-size: 0.88rem;
   line-height: 1.55;
+  /* Centred against the round buttons beside it, which sit on the row's full
+     height and are what the eye actually checks the text against. Symmetric
+     padding is what lands it there: JS sizes the box to scrollHeight, so the
+     content box comes out exactly one line tall and the line box falls dead
+     centre. Measured off a 3x screenshot of the real pill — the ink lands
+     within half a pixel of the button's centre, where the old 11.5/8.5 split
+     sat 1.5-2px low. Any asymmetry shifts the text by exactly (top-bottom)/2,
+     so keep these equal. */
   padding: 10px 0;
-  /* The starting height. JS takes over on the first paint. */
-  height: 41px;
+  /* The starting height, matching what JS measures on the first paint, so the
+     box doesn't resize under the cursor. */
+  height: 42px;
   max-height: 168px;
   /* A stray blank line at the foot of a pasted paragraph shouldn't reserve
      a whole extra row of the box on some platforms. */
@@ -1133,6 +1200,60 @@ body {
 .send:disabled {
   cursor: not-allowed;
   opacity: 0.35;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reachable — keyboard focus, and targets big enough for a thumb
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* There was no focus ring anywhere in the room. Two controls had styled their
+   own :focus-visible and everything else — send, "hear another mind", the
+   topbar icons, the history rows, the cards on the landing — had nothing, so
+   tabbing through left no trace of where you were. One ring, defined once,
+   tinted to the room rather than the browser's default white slab. Pointer
+   clicks never trigger :focus-visible, so none of this shows for a mouse. */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--introspector) 62%, var(--text));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+/* The pill already answers focus with its own ring (.composer:focus-within),
+   so the textarea inside it does not need a second one drawn on top. */
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+/* Touch, measured by input device rather than by window width: a small window
+   on a laptop is still a mouse, and a tablet at 1024px is still a thumb.
+   Everything here grows the HIT AREA without moving the ink, so the layout is
+   unchanged — the controls simply stop being 25-34px targets. */
+@media (pointer: coarse) {
+  .continue {
+    /* Was 6px 2px — about 25px tall in total, against a 44px guideline. */
+    padding: 14px 12px;
+    margin-top: 18px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .mute-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .send {
+    /* Was 42px — a real-device check (headless Chromium at an iPhone-width
+       viewport) measured it and flagged the miss; the icon-btn rule right
+       above it was already correctly at 44 and this one was not. It is the
+       primary action in the composer — send, or advance the conversation —
+       so it gets the full guideline rather than the smaller size given to
+       the deliberately-quiet mute and delete controls below. */
+    width: 44px;
+    height: 44px;
+  }
+  .history-delete {
+    width: 38px;
+    height: 38px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1307,8 +1428,18 @@ body {
   .composer {
     padding: 5px 5px 5px 15px;
   }
+}
+
+/* iOS Safari zooms the whole viewport when a focused field is under 16px, and
+   it does not zoom back out afterwards: the room ends up scaled, the composer
+   half off-screen, and the only way back is a manual pinch. The field was
+   0.88rem (≈14px), so this fired on every tap into the box on an iPhone.
+   16px is the documented threshold and the only fix that does not involve
+   user-scalable=no, which would take pinch-zoom away from everyone who needs
+   it. Slightly larger than the design intended, and better to type in. */
+@media (pointer: coarse) {
   .composer textarea {
-    font-size: 0.87rem;
+    font-size: 16px;
   }
 }
 
