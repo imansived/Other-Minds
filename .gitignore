@@ -50,5 +50,5 @@ __pycache__/
 # local conversation database
 backend/data/
 
-# private study notes - keep local, never pushed
-docs/Other-Minds-Technical-Manual.md
+# private study notes and coursework - keep local, never pushed
+docs/

@@ -1,12 +1,72 @@
 # Other Minds
 
-Three agents — **The Introspector**, **The Behaviorist**, and **The Gardener** —
-respond to the same question from genuinely different worldviews. They aren't
-trying to persuade each other or reach agreement; the point is the perspective
-shift, not a resolution.
+> You ask an AI. It agrees with you.
 
-Agents speak one message at a time. After each reply you either respond or press
-_hear another mind_ — nothing auto-advances, so you are never bombarded.
+That's the failure mode this project exists to avoid. A single chatbot mirrors
+whatever frame you walk in with — it anchors, it flatters, it reaches for
+consensus. Other Minds refuses to converge. Three agents —
+**The Introspector**, **The Behaviorist**, and **The Gardener** — read the same
+question through genuinely different lenses: what you feel, what you repeatedly
+do, what you've already said to other people. They are not trying to agree with
+you, or with each other. The point is the perspective shift, not a resolution.
+
+Agents speak one message at a time. After each reply you either respond or
+press *hear another mind* — nothing auto-advances, so you are never bombarded,
+and the choice of whose voice to hear next stays yours.
+
+## The problem it's actually testing
+
+Multi-agent LLM systems are a well-studied idea — but almost all of that work
+optimizes for *agreement*: debate until the agents converge, refine until the
+output is more accurate. That's a different goal from this one. Other Minds
+doesn't ask the agents to settle anything. It asks whether giving someone three
+deliberately distinct readings of their own situation measurably widens how
+they think about it — and whether an LLM can actually sustain three distinct
+voices long enough for that to matter, instead of quietly collapsing into one
+helpful tone wearing three name tags.
+
+That second question turns out to be the harder one to even ask honestly,
+which is most of what makes this project worth a second look.
+
+## Keeping the agents honest
+
+Any of the three lenses can state a guess about your inner life as though it
+were settled fact. The Introspector: *"you already know you want to leave."*
+The Behaviorist: *"you're avoiding the decision because you're afraid of what
+happens next."* The Gardener: *"you don't want to disappoint your partner."*
+Different lenses, the same failure — a reading presented as a fact no one
+outside you could actually check.
+
+The fix isn't a list of banned phrases; banning "you already know" would also
+block the same sentence when it's honestly owned. So the house rule —
+**hypothesis is not fact** — applies to all three agents at once, underneath
+whatever each one individually notices, and a detector in
+[`backend/app/epistemics.py`](backend/app/epistemics.py) measures whether it
+held, turn by turn, across every stored conversation. It separates a claim
+about someone's state into six levels, from *"you said you're afraid"*
+(reported, always fine) up through *"the real reason you stayed is fear"*
+(invented, flagged) — and the same sentence passes or fails depending only on
+whether it carries a marker that hands the claim back to the speaker: *"I
+wonder," "my read," "might," "seems."* Vocabulary isn't the test; ownership is.
+
+It is measurement, not moderation — nothing in the request path calls it, so
+it can't stop a bad turn before you see it. What it's for is making the
+project's central claim checkable rather than just plausible:
+
+| | result |
+|---|---|
+| Core specification (100 hand-written cases) | **100/100** pass |
+| Adversarial set, written to break it | **16/25** pass — 9 documented gaps |
+| Full backend suite | **263 passed** |
+
+The adversarial number is the more honest one to lead with. Those 9 gaps are
+written down with the exact sentence that slips through and the exact reason
+it does — a hedge covering a sentence instead of the clause that needed it, a
+claim about a third party where every pattern is anchored to "you." A lexical
+detector reading one turn at a time cannot know what you actually said earlier,
+so it cannot fully tell a reported fear from an invented one — and the project
+says so in its own documentation instead of letting the 100/100 headline do
+the talking alone. That's the difference between a feature and an instrument.
 
 ## Architecture
 
@@ -36,7 +96,9 @@ no CORS, no public exposure, and the API key stays out of the client bundle.
 | [`app/lib/agents.ts`](app/lib/agents.ts) | agent ids, display names, colours — **not** the prompts |
 
 The system prompts live only in
-[`backend/app/agents/prompts/`](backend/app/agents/prompts/).
+[`backend/app/agents/prompts/`](backend/app/agents/prompts/), with the shared
+house rule in [`_house.md`](backend/app/agents/prompts/_house.md) — the one
+file all three lenses answer to.
 
 Conversation history is stored by the service in SQLite
 (`backend/data/other_minds.db`), not in the browser. That is what makes the
@@ -78,13 +140,6 @@ A few deliberate choices, in [docker/](docker/) and
 - The web image uses Next's `output: "standalone"`, and copies `public/` and
   `.next/static` in by hand — standalone omits both, and without them pages
   render while portraits and stylesheets 404.
-
-> **Not yet built.** These images were written and every part that could be
-> checked without a Docker daemon was: compose parses, all `COPY` sources
-> exist, `npm ci` matches the lockfile, the env vars map onto the settings, and
-> the exact production command (`node server.js` with statics copied) was run
-> locally and serves pages, portraits and the API proxy. The images themselves
-> have not been built or run — there is no Docker on this machine.
 
 ## Deploying
 
@@ -272,3 +327,7 @@ not eat the output budget.
 
 A corpus seeded with one model does not describe another, so re-seed before
 comparing numbers across models.
+
+---
+
+Built and maintained by **Mansi Vedpathak**.

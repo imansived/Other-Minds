@@ -47,6 +47,13 @@ MIND_READING = (
     r"\byou don'?t actually (?:want|believe|feel|know)\b",
     r"\byou actually (?:want|believe|feel|know)\b",
     r"\byou(?:'re| are) (?:afraid|scared|terrified|angry|worried) (?:because|of that|that)\b",
+    # "afraid of being wrong" names a motive as surely as "afraid because". Only the
+    # motive-bearing objects are listed: "afraid of the conversation" is an
+    # observation about a situation, and it must stay clear (TC-064).
+    r"\byou(?:'re| are) (?:really |actually )?(?:afraid|scared|terrified) of (?:being|losing|becoming)\b",
+    # "really asking WHETHER" is a claim about what the person is deciding. The bare
+    # "you're asking about X" is an ordinary observation, so it is not listed.
+    r"\byou(?:'re| are) (?:really|actually) asking (?:whether|if)\b",
     r"\byou(?:'re| are) using\b[^.!?]*\bas an excuse\b",
     r"\bthe real reason (?:you|that you)\b",
     r"\byour real (?:fear|reason|motive)\b",

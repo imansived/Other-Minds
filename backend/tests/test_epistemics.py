@@ -34,6 +34,17 @@ PAIRS = [
         "What you really want is permission to stop.",
         "What you really want might be permission to stop.",
     ),
+    # Found by running the 100-case specification: a motive named through an
+    # intensifier ("really afraid of being wrong") and through "really asking
+    # whether" both passed as if they were observations.
+    (
+        "You're really afraid of being wrong.",
+        "I wonder if you're really afraid of being wrong.",
+    ),
+    (
+        "You're really asking whether you can stop.",
+        "I wonder if you're really asking whether you can stop.",
+    ),
     (
         "Deep down you have already decided.",
         "Deep down you may have already decided. That is a guess from here.",
@@ -118,6 +129,10 @@ def test_ordinary_speech_is_not_flagged():
         "That changes the shape of the problem.",
         "Your sister has carried the other forty-nine weeks of this.",
         "I don't know. Nothing you have said settles it either way.",
+        # Afraid of a situation is an observation. Only motive-bearing objects
+        # ("of being wrong", "of losing") are flagged by the new pattern.
+        "You are afraid of the conversation with your mother.",
+        "You're asking about the job offer.",
     ]:
         assert unmarked_mind_reading(line) == [], f"false positive: {line!r}"
 
