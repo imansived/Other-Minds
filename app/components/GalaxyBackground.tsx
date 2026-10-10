@@ -188,6 +188,12 @@ export default function GalaxyBackground() {
       <div className="nebula nebula-indigo" />
       <div className="nebula nebula-amber" />
 
+      {/* The room's light leans toward whoever is speaking. Three still
+          washes; only their opacity changes (see "Mood" in globals.css). */}
+      <div className="mood mood-introspector" />
+      <div className="mood mood-behaviorist" />
+      <div className="mood mood-gardener" />
+
       {LAYERS.map((spec, i) => (
         <Layer key={i} spec={spec} index={i} />
       ))}

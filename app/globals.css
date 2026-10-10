@@ -1484,3 +1484,55 @@ body {
     transform: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Mood — the room's light leans toward whoever is speaking
+   ─────────────────────────────────────────────────────────────────────────
+   Same room, same sky; only the light changes, the way a room looks
+   different by lamplight, by dusk, by morning green through a window.
+   Three still washes inside .galaxy, above the nebulae and beneath the
+   stars. Nothing animates: only opacity fades when the speaker changes,
+   which the compositor does on its own, so it costs nothing per frame.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.mood {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 2.6s ease;
+  will-change: opacity;
+}
+.app[data-mood="introspector"] .mood-introspector,
+.app[data-mood="behaviorist"] .mood-behaviorist,
+.app[data-mood="gardener"] .mood-gardener {
+  opacity: 1;
+}
+
+/* Lamplight: a violet dusk overhead, a warm pool where you're sitting. */
+.mood-introspector {
+  background:
+    radial-gradient(ellipse 85% 60% at 50% 0%, rgba(160, 120, 230, 0.24), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 50% 72%, rgba(232, 176, 120, 0.12), transparent 72%),
+    linear-gradient(rgba(120, 90, 190, 0.05), rgba(120, 90, 190, 0.05));
+}
+
+/* Evening: the last amber along the horizon, the sky above it cooling. */
+.mood-behaviorist {
+  background:
+    radial-gradient(ellipse 115% 50% at 50% 106%, rgba(218, 150, 68, 0.24), transparent 70%),
+    radial-gradient(ellipse 90% 60% at 50% -5%, rgba(110, 132, 175, 0.12), transparent 70%),
+    linear-gradient(rgba(150, 110, 60, 0.04), rgba(150, 110, 60, 0.04));
+}
+
+/* Green through leaves: light rising softly from below and one side. */
+.mood-gardener {
+  background:
+    radial-gradient(ellipse 100% 60% at 50% 108%, rgba(95, 191, 154, 0.24), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 6% 30%, rgba(120, 182, 120, 0.11), transparent 72%),
+    linear-gradient(rgba(70, 140, 110, 0.045), rgba(70, 140, 110, 0.045));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mood {
+    transition: none;
+  }
+}

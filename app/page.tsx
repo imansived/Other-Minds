@@ -380,11 +380,17 @@ export default function Home() {
   }
 
   // Who is speaking is said by the messages themselves, so the chrome carries
-  // no agent state at all.
+  // no agent state at all. Only the room's light follows the floor: whoever
+  // is composing, else whoever spoke last.
   const onLanding = transcript.length === 0;
+  let mood: AgentId | null = composingAgent;
+  for (let k = transcript.length - 1; !mood && k >= 0; k--) {
+    const role = transcript[k].role;
+    if (role !== "user") mood = role;
+  }
 
   return (
-    <div className="app">
+    <div className="app" data-mood={mood ?? "none"}>
       <GalaxyBackground />
 
       <Sidebar
