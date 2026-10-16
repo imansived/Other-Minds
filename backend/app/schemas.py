@@ -35,6 +35,9 @@ class TurnRequest(CamelModel):
     # orchestrator.pick_next_speaker. Defaults true, so an ordinary reply keeps
     # the organic double turn.
     allow_same_speaker: bool = Field(default=True, alias="allowSameSpeaker")
+    # The mind the person chose by replying to one of its messages. Beats every
+    # other way a speaker gets picked — see orchestrator.choose_speaker.
+    address_to: AgentId | None = Field(default=None, alias="addressTo")
 
 
 class TurnResponse(CamelModel):
@@ -49,6 +52,7 @@ class ErrorResponse(BaseModel):
 class NextSpeakerRequest(CamelModel):
     transcript: list[ChatMessage] = Field(min_length=1)
     allow_same_speaker: bool = Field(default=True, alias="allowSameSpeaker")
+    address_to: AgentId | None = Field(default=None, alias="addressTo")
 
 
 class NextSpeakerResponse(CamelModel):

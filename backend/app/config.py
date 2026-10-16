@@ -47,6 +47,13 @@ class Settings(BaseSettings):
 
     # ── Turn logic (ported from app/page.tsx) ────────────────────────────────
     double_turn_chance: float = 0.25
+    # The extra pull toward a mind that has just been named by the one before it
+    # (orchestrator.addressed). It is added to the ordinary draw, not instead of
+    # it: when the roll fails the draw still runs and may pick the same mind, so
+    # after "hear another mind" — two others, even odds — the named mind speaks
+    # 0.4 + 0.6 * 0.5 = 70% of the time, against 50% before. A pull and not a
+    # rule, so the third mind is never shut out of a quarrel between two.
+    reply_pull: float = 0.4
 
     # Origins allowed to call this API directly. The Next.js proxy route does
     # not need CORS (it is server-to-server); this is for the Streamlit UI and

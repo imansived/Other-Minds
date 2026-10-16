@@ -61,23 +61,98 @@ def summoned(transcript: list[ChatMessage]) -> AgentId | None:
     return named[0] if len(named) == 1 else None
 
 
+def addressed(transcript: list[ChatMessage]) -> AgentId | None:
+    """The one other mind the last agent turn names, or None.
+
+    The mirror of `summoned`, one level down: there the person names a mind and
+    it should answer; here a mind names another and that one has been called on.
+    Same accepted trade-off — a bare word like "gardener" can match without
+    being a challenge — and the same rule for two names: naming both minds is
+    talking about them, not to either.
+
+    Only counts while the last message is an agent turn. Once the person has
+    spoken, they are who the room answers.
+    """
+    if not transcript:
+        return None
+    last = transcript[-1]
+    if last.role == "user":
+        return None
+    named = [
+        a
+        for a, pattern in _SUMMONS.items()
+        if a != last.role and pattern.search(last.content)
+    ]
+    return named[0] if len(named) == 1 else None
+
+
+def _trading_blows(transcript: list[ChatMessage]) -> bool:
+    """The last four messages are all minds, passed between only two of them.
+
+    A quarrel between two is the point; a quarrel that has quietly shut the
+    third out is not. Once it has run four turns the pull stands down and the
+    ordinary draw — which treats the third mind as an equal — takes over.
+    """
+    tail = transcript[-4:]
+    return (
+        len(tail) == 4
+        and all(m.role != "user" for m in tail)
+        and len({m.role for m in tail}) == 2
+    )
+
+
+def right_of_reply(
+    transcript: list[ChatMessage],
+    *,
+    rng: random.Random | None = None,
+) -> AgentId | None:
+    """The mind that was just called on, some of the time — otherwise None.
+
+    This is what turns three monologues into an exchange. The draw is blind to
+    what was said, so a mind challenged by name got the right of reply only as
+    often as chance gave it: even odds after "hear another mind". Here the
+    challenged mind is pulled forward by `settings.reply_pull`; when the roll
+    fails the ordinary draw still runs, so the pull is never a guarantee and
+    the third mind is never locked out.
+    """
+    target = addressed(transcript)
+    if target is None or _trading_blows(transcript):
+        return None
+    r = rng or random
+    return target if r.random() < settings.reply_pull else None
+
+
 def choose_speaker(
     transcript: list[ChatMessage],
     *,
     allow_same: bool = True,
     rng: random.Random | None = None,
+    address_to: AgentId | None = None,
 ) -> AgentId:
-    """Who speaks next: the mind asked for by name, otherwise the weighted draw.
+    """Who speaks next: the mind chosen, the mind named, the mind called on, else the draw.
 
     This is the entry point every client should use. Asking for a mind by name
     and getting a different one is the flaw it exists to close — the room was
     ignoring the one thing the person said unambiguously.
 
+    `address_to` is the person choosing a mind without typing its name — replying
+    to one of its messages. It is the plainest request there is, so nothing
+    outranks it: not a different name in the text, not the draw, and not
+    `allow_same`. An id that is not a mind is ignored rather than trusted.
+
     A summons beats `allow_same`: naming a mind that just spoke is a request for
-    more from that mind, not a mistake to correct.
+    more from that mind, not a mistake to correct. Below it, a mind that was
+    just challenged by another is pulled forward (see `right_of_reply`). The
+    draw itself, `pick_next_speaker`, is untouched.
     """
-    return summoned(transcript) or pick_next_speaker(
-        last_agent_speaker(transcript), allow_same=allow_same, rng=rng
+    if address_to in AGENT_IDS:
+        return address_to  # type: ignore[return-value]
+    return (
+        summoned(transcript)
+        or right_of_reply(transcript, rng=rng)
+        or pick_next_speaker(
+            last_agent_speaker(transcript), allow_same=allow_same, rng=rng
+        )
     )
 
 

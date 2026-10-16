@@ -27,6 +27,8 @@ export default function Composer({
   autoFocus = false,
   muted,
   onToggleMute,
+  focusSignal = 0,
+  onEscape,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -37,6 +39,10 @@ export default function Composer({
   /** Sound state. Both are omitted on the landing screen, where nothing arrives yet. */
   muted?: boolean;
   onToggleMute?: () => void;
+  /** Bump it to put the cursor in the box — a reply has just been started. */
+  focusSignal?: number;
+  /** Escape was pressed in the box. */
+  onEscape?: () => void;
 }) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   // Past one line the pill stops being a pill: a 999px radius on a tall box
@@ -67,6 +73,11 @@ export default function Composer({
   // Every keystroke, and every width change — a narrower window re-wraps the
   // same text onto more lines.
   useEffect(resize, [value, resize]);
+
+  // Starting a reply is a request to type: the box should already be ready.
+  useEffect(() => {
+    if (focusSignal > 0) areaRef.current?.focus();
+  }, [focusSignal]);
   useEffect(() => {
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
@@ -86,6 +97,10 @@ export default function Composer({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
+          if (e.key === "Escape" && onEscape) {
+            onEscape();
+            return;
+          }
           // Enter sends, shift-Enter breaks the line. The composition guard is
           // for IME input, where Enter is how a candidate is accepted and must
           // not also fire the message.

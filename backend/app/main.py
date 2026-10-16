@@ -93,7 +93,11 @@ async def next_speaker(body: NextSpeakerRequest) -> JSONResponse:
 
     Naming a mind in the message elects that mind — see orchestrator.summoned.
     """
-    picked = choose_speaker(body.transcript, allow_same=body.allow_same_speaker)
+    picked = choose_speaker(
+        body.transcript,
+        allow_same=body.allow_same_speaker,
+        address_to=body.address_to,
+    )
     return JSONResponse({"agentId": picked})
 
 
@@ -110,7 +114,9 @@ async def agent_turn(body: TurnRequest) -> JSONResponse:
     longer controls turn order.
     """
     agent_id = body.agent_id or choose_speaker(
-        body.transcript, allow_same=body.allow_same_speaker
+        body.transcript,
+        allow_same=body.allow_same_speaker,
+        address_to=body.address_to,
     )
     agent = get_agent(agent_id)
     if agent is None:

@@ -8,11 +8,14 @@ import {
   type ChatMessage,
 } from "@/app/lib/agents";
 import { agentVars } from "@/app/components/agent-theme";
+import AgentRow from "@/app/components/AgentRow";
 import Avatar from "@/app/components/Avatar";
 import Composer from "@/app/components/Composer";
 import GalaxyBackground from "@/app/components/GalaxyBackground";
 import Landing from "@/app/components/Landing";
+import { ReplyChip, UserMessage } from "@/app/components/Quote";
 import Sidebar from "@/app/components/Sidebar";
+import { excerptOf, formatReply } from "@/app/lib/reply";
 import {
   fetchConversation,
   HttpError,
@@ -118,6 +121,18 @@ export default function Home() {
   const turnInFlightRef = useRef(false);
   const busy = composingAgent !== null || resolvingSpeaker;
 
+  // The mind whose message is being replied to, WhatsApp-style: swipe a message
+  // (or press its reply button) and the next thing sent goes to THAT mind.
+  const [replyTo, setReplyTo] = useState<{ mind: AgentId; excerpt: string } | null>(
+    null,
+  );
+  // Bumped each time a reply starts, so the box takes the cursor.
+  const [focusSignal, setFocusSignal] = useState(0);
+
+  // The mind a failed turn was meant to be, and how long the transcript was
+  // when it failed. See runTurn.
+  const retryRef = useRef<{ agent: AgentId; length: number } | null>(null);
+
   function trackScrollPosition() {
     const el = conversationRef.current;
     if (!el) return;
@@ -187,11 +202,14 @@ export default function Home() {
   async function askNextSpeaker(
     history: ChatMessage[],
     allowSameSpeaker: boolean,
+    addressTo?: AgentId,
   ): Promise<AgentId> {
     const res = await fetch("/api/agent/next-speaker", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript: history, allowSameSpeaker }),
+      // addressTo is the person choosing a mind by replying to it; undefined is
+      // dropped by JSON.stringify, so an ordinary turn sends what it always did.
+      body: JSON.stringify({ transcript: history, allowSameSpeaker, addressTo }),
     });
     const data = await readReply(res);
     if (!res.ok) throw new Error((data.error as string) ?? "Request failed");
@@ -249,6 +267,7 @@ export default function Home() {
       const elapsed = Date.now() - started;
       if (elapsed < MIN_COMPOSE_MS) await sleep(MIN_COMPOSE_MS - elapsed);
       const updated: ChatMessage[] = [...history, { role: agentId, content: text }];
+      retryRef.current = null;
       setTranscript(updated);
       // Sounded on arrival only — never when an old conversation is reopened.
       // Checked again when it fires, so a mute during the entrance still lands.
@@ -260,6 +279,11 @@ export default function Home() {
       }
       return updated;
     } catch (err) {
+      // Remember WHO this was. "Try again" must bring back the same mind: the
+      // draw used to run again from scratch, and it runs with the last speaker
+      // excluded — so a mind that failed on a double turn could never be the
+      // one that came back, and any other mind could take its place.
+      retryRef.current = { agent: agentId, length: history.length };
       setError(err instanceof Error ? err.message : "Something went wrong");
       return null;
     } finally {
@@ -273,7 +297,11 @@ export default function Home() {
   // `allowSameSpeaker` is false when the person pressed "hear another mind".
   // The draw is made once, here, and the chosen agent is then pinned for the
   // generate call — so the two requests cannot disagree about who is speaking.
-  async function runTurn(history: ChatMessage[], allowSameSpeaker = true) {
+  async function runTurn(
+    history: ChatMessage[],
+    allowSameSpeaker = true,
+    addressTo?: AgentId,
+  ) {
     // `busy` comes from the render closure, so it can still be stale for a
     // click that lands before React re-renders. The ref is checked and set in
     // the same synchronous step, which a second call cannot slip past.
@@ -283,13 +311,22 @@ export default function Home() {
     setResolvingSpeaker(true);
 
     let agentId: AgentId;
-    try {
-      agentId = await askNextSpeaker(history, allowSameSpeaker);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setResolvingSpeaker(false);
-      turnInFlightRef.current = false;
-      return;
+    // The same turn tried again — same transcript, nothing added since it
+    // failed — goes to the mind it was already going to. Choosing someone
+    // explicitly is a new request and overrides it.
+    const pending = retryRef.current;
+    if (!addressTo && pending && pending.length === history.length) {
+      agentId = pending.agent;
+    } else {
+      retryRef.current = null;
+      try {
+        agentId = await askNextSpeaker(history, allowSameSpeaker, addressTo);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+        setResolvingSpeaker(false);
+        turnInFlightRef.current = false;
+        return;
+      }
     }
 
     // Cleared in the same synchronous block that sets the composing agent, so
@@ -310,7 +347,22 @@ export default function Home() {
   // else in as many words.
   function advance() {
     if (busy || transcript.length === 0) return;
+    // The arrow with nothing typed, while replying to someone: hear THAT mind.
+    if (replyTo) {
+      const target = replyTo.mind;
+      setReplyTo(null);
+      void runTurn(transcript, false, target);
+      return;
+    }
     void runTurn(transcript, false);
+  }
+
+  // Swipe or reply button: the next message is for this mind.
+  function startReply(index: number) {
+    const m = transcript[index];
+    if (!m || m.role === "user") return;
+    setReplyTo({ mind: m.role, excerpt: excerptOf(m.content) });
+    setFocusSignal((n) => n + 1);
   }
 
   // Input-bar send: with text, drop the user's message in and let ONE agent
@@ -319,10 +371,15 @@ export default function Home() {
     if (busy) return;
     const content = input.trim();
     if (content) {
+      const target = replyTo;
       setInput("");
-      const base: ChatMessage[] = [...transcript, { role: "user", content }];
+      setReplyTo(null);
+      // Replying carries the line being answered, so the mind — and anyone
+      // reading back later — can see what this was a reply to.
+      const text = target ? formatReply(target.mind, target.excerpt, content) : content;
+      const base: ChatMessage[] = [...transcript, { role: "user", content: text }];
       setTranscript(base);
-      void runTurn(base);
+      void runTurn(base, true, target?.mind);
     } else {
       advance();
     }
@@ -342,6 +399,8 @@ export default function Home() {
     setInput("");
     setError(null);
     setMobileOpen(false);
+    setReplyTo(null);
+    retryRef.current = null;
     atFootRef.current = true;
   }
 
@@ -355,6 +414,8 @@ export default function Home() {
       setTranscript(full.transcript);
       setError(null);
       setMobileOpen(false);
+      setReplyTo(null);
+      retryRef.current = null;
       atFootRef.current = true;
     } catch (err) {
       if (err instanceof HttpError && err.status === 404) {
@@ -376,6 +437,8 @@ export default function Home() {
       currentIdRef.current = null;
       setCurrentId(null);
       setTranscript([]);
+      setReplyTo(null);
+      retryRef.current = null;
     }
   }
 
@@ -494,19 +557,21 @@ export default function Home() {
                         key={i}
                         className={`row user enter-user${carriesOn ? " carries-on" : ""}`}
                       >
-                        <div className="bubble user">{m.content}</div>
+                        <div className="bubble user">
+                          <UserMessage content={m.content} />
+                        </div>
                       </div>
                     );
                   }
 
                   const agent = AGENTS[m.role];
                   return (
-                    <div
+                    <AgentRow
                       key={i}
-                      className={`row agent ${ENTRANCE[m.role]}${
-                        carriesOn ? " carries-on" : ""
-                      }`}
-                      style={agentVars(m.role)}
+                      mind={m.role}
+                      carriesOn={carriesOn}
+                      enter={ENTRANCE[m.role]}
+                      onReply={() => startReply(i)}
                     >
                       <div className="gutter">
                         {!carriesOn && (
@@ -524,7 +589,7 @@ export default function Home() {
                           {m.content}
                         </div>
                       </div>
-                    </div>
+                    </AgentRow>
                   );
                 })}
 
@@ -599,20 +664,35 @@ export default function Home() {
 
             {/* Single unified input / control bar. */}
             <div className="composer-dock">
+              {replyTo && (
+                <ReplyChip
+                  mind={replyTo.mind}
+                  excerpt={replyTo.excerpt}
+                  onCancel={() => setReplyTo(null)}
+                />
+              )}
               <Composer
                 value={input}
                 onChange={setInput}
                 onSubmit={handleSend}
                 disabled={busy}
-                placeholder="put a question on the table…"
+                placeholder={
+                  replyTo
+                    ? `reply to ${AGENTS[replyTo.mind].name}…`
+                    : "put a question on the table…"
+                }
                 muted={muted}
                 onToggleMute={toggleMute}
+                focusSignal={focusSignal}
+                onEscape={replyTo ? () => setReplyTo(null) : undefined}
               />
               {/* With nothing typed, the arrow isn't "send" — it's the room
                   carrying on without you. Say so, quietly. */}
               {!input.trim() && !busy && (
                 <p className="composer-hint">
-                  or use the arrow to invite another mind
+                  {replyTo
+                    ? `or use the arrow to hear ${AGENTS[replyTo.mind].name}`
+                    : "or use the arrow to invite another mind"}
                 </p>
               )}
             </div>
